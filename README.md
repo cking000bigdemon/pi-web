@@ -7,13 +7,13 @@
 **无需安装，直接运行：**
 
 ```bash
-npx @agegr/pi-web@latest
+npx @cking000/pi-web@latest
 ```
 
 **或全局安装后使用：**
 
 ```bash
-npm install -g @agegr/pi-web
+npm install -g @cking000/pi-web
 pi-web
 ```
 
