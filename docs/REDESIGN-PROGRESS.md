@@ -25,7 +25,8 @@
 - **浅色主题**:#F2F2F2 画布 + 同套彩色磁贴 — 冷启动走查通过。
 - 功能契约 1:1 保留(会话加载/开文件/弹窗/打字/SSE 命令均正常)。
 - 本地提交 9ccd98b→(iter10);**尚未 push 到 fork / 未重打桌面安装包**(待用户)。
-- **可选 refinement(未做)**: 助手消息 panel+左4px accent 竖条容器(当前裸 markdown 配 teal 工具磁贴已很干净); 工具磁贴翻转动画(当前静态 teal 磁贴头); 选中 provider 行 accent 实心。
+- **refinement ✓(应用户要求补做)**: ① 助手消息加左 3px accent 竖条 + paddingLeft(轻量标识,不加 panel 底——避免长消息+工具磁贴显杂); ② Models 弹窗选中 provider/model/oauth/apikey 行 = 实心 accent + 白字。截图确认: variflight 选中蓝 tile + 助手蓝左竖条; console 零报错。
+- **工具磁贴翻转动画——有意不做**: 真实多工具调用时自动翻转分散注意力,静态 teal 磁贴头 + inline 展开是更优 UX。
 
 ## 契约红线(每屏都要守住)
 命令 POST /api/agent/<id>: prompt/steer/follow_up/abort/fork/navigate_tree/set_model/set_tools/set_thinking_level/compact/abort_compaction/get_tools

@@ -1476,12 +1476,12 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                   <div
                     key={p.id}
                     onClick={() => setSelection({ type: "oauth", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 0, cursor: "pointer", background: isSelected ? "var(--bg-selected)" : "none" }}
+                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 0, cursor: "pointer", background: isSelected ? "var(--accent)" : "none" }}
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
                   >
                     <ProviderIcon id={p.id} size={16} />
-                    <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                    <span style={{ fontSize: 12, color: isSelected ? "#fff" : "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                   </div>
                 );
               })}
@@ -1493,12 +1493,12 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                   <div
                     key={p.id}
                     onClick={() => setSelection({ type: "apikey", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 0, cursor: "pointer", background: isSelected ? "var(--bg-selected)" : "none" }}
+                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 0, cursor: "pointer", background: isSelected ? "var(--accent)" : "none" }}
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
                   >
                     <ProviderIcon id={p.id} size={16} />
-                    <span style={{ fontSize: 12, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
+                    <span style={{ fontSize: 12, color: isSelected ? "#fff" : "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
                   </div>
                 );
               })}
@@ -1519,7 +1519,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                     {/* Provider row */}
                     <div
                       onClick={() => setSelection({ type: "provider", name: pName })}
-                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", borderRadius: 0, cursor: "pointer", background: isProviderSelected ? "var(--bg-selected)" : "none" }}
+                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", borderRadius: 0, cursor: "pointer", background: isProviderSelected ? "var(--accent)" : "none" }}
                       onMouseEnter={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                       onMouseLeave={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "none"; }}
                     >
@@ -1530,7 +1530,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                         <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
                         <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
                       </svg>
-                      <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 600 : 400, color: "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 12, fontWeight: isProviderSelected ? 600 : 400, color: isProviderSelected ? "#fff" : "var(--text)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {pName}
                       </span>
                     </div>
@@ -1542,11 +1542,11 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                         <div
                           key={i}
                           onClick={() => setSelection({ type: "model", providerName: pName, index: i })}
-                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 26px", borderRadius: 0, cursor: "pointer", background: isModelSelected ? "var(--bg-selected)" : "none" }}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 26px", borderRadius: 0, cursor: "pointer", background: isModelSelected ? "var(--accent)" : "none" }}
                           onMouseEnter={(e) => { if (!isModelSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
                           onMouseLeave={(e) => { if (!isModelSelected) e.currentTarget.style.background = "none"; }}
                         >
-                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: m.id ? "var(--text-muted)" : "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: isModelSelected ? "#fff" : (m.id ? "var(--text-muted)" : "var(--text-dim)"), flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {m.id || "new model"}
                           </span>
                           {m.reasoning && (

@@ -392,7 +392,7 @@ function AssistantMessageView({
 
   return (
     <div
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: 16, borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
