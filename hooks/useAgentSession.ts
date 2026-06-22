@@ -348,6 +348,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (sessionIdRef.current) loadSession(sessionIdRef.current);
         }
         break;
+      // Extension commands / input-handled prompts resolve without an agent run, so no
+      // agent_end arrives and the optimistic running state would stay stuck. Reset it
+      // here. For real prompts, agent_end already reset us first (ref is false -> no-op).
+      case "prompt_settled":
+        if (event.error) {
+          setMessages((prev) => [...prev, localNote(`⚠️ ${event.error}`)]);
+        }
+        if (agentRunningRef.current) {
+          setAgentRunning(false);
+          setAgentPhase(null);
+          setRetryInfo(null);
+          dispatch({ type: "end" });
+        }
+        break;
       // ── Extension UI bridge (issue #68 follow-up) ──
       case "extension_ui_request": {
         const method = event.method as string;

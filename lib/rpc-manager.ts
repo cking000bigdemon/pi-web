@@ -194,9 +194,16 @@ export class AgentSessionWrapper {
 
     switch (type) {
       case "prompt": {
-        // Fire and forget — events come via subscribe
+        // Fire and forget — events come via subscribe. Extension commands and
+        // input-handled prompts resolve without running the agent (no agent_start/
+        // agent_end), so emit prompt_settled when prompt() settles to let the client
+        // reset its optimistic running state. For real prompts, agent_end fires first
+        // (client already reset) and this is an idempotent no-op. A rejection (e.g. no
+        // model/auth) carries the error so the client can surface it.
         const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        this.inner.prompt(command.message as string, promptImages?.length ? { images: promptImages } : undefined).catch(() => {});
+        this.inner.prompt(command.message as string, promptImages?.length ? { images: promptImages } : undefined)
+          .then(() => this.emitLocal({ type: "prompt_settled" }))
+          .catch((err: unknown) => this.emitLocal({ type: "prompt_settled", error: err instanceof Error ? err.message : String(err) }));
         return null;
       }
 
