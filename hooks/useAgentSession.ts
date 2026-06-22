@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useReducer } from "react";
-import type { AgentMessage, SessionInfo, SessionTreeNode } from "@/lib/types";
+import type {
+  AgentMessage, SessionInfo, SessionTreeNode,
+  ExtensionUiDialog, ExtensionUiWidget, ExtensionUiStatus, ExtensionUiToast, ExtensionUiResponse,
+} from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
 import {
@@ -124,6 +127,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [isCompacting, setIsCompacting] = useState(false);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
+  // Extension UI bridge (issue #68 follow-up)
+  const [uiDialog, setUiDialog] = useState<ExtensionUiDialog | null>(null);
+  const [uiWidgets, setUiWidgets] = useState<ExtensionUiWidget[]>([]);
+  const [uiStatuses, setUiStatuses] = useState<ExtensionUiStatus[]>([]);
+  const [uiToasts, setUiToasts] = useState<ExtensionUiToast[]>([]);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
@@ -339,6 +347,50 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else if (!event.aborted) {
           if (sessionIdRef.current) loadSession(sessionIdRef.current);
         }
+        break;
+      // ── Extension UI bridge (issue #68 follow-up) ──
+      case "extension_ui_request": {
+        const method = event.method as string;
+        if (method === "select" || method === "confirm" || method === "input" || method === "editor") {
+          setUiDialog({
+            id: event.id as string,
+            method,
+            title: (event.title as string) ?? "",
+            message: event.message as string | undefined,
+            options: event.options as string[] | undefined,
+            placeholder: event.placeholder as string | undefined,
+            prefill: event.prefill as string | undefined,
+            timeout: event.timeout as number | undefined,
+          });
+        } else if (method === "notify") {
+          const id = `${Date.now()}-${Math.round(Math.random() * 1e9).toString(36)}`;
+          const type = (event.notifyType as "info" | "warning" | "error" | undefined) ?? "info";
+          setUiToasts((prev) => [...prev, { id, message: String(event.message ?? ""), type }]);
+        } else if (method === "setStatus") {
+          const key = event.statusKey as string;
+          const text = event.statusText as string | undefined;
+          setUiStatuses((prev) => {
+            const next = prev.filter((s) => s.key !== key);
+            if (text != null && text !== "") next.push({ key, text });
+            return next;
+          });
+        } else if (method === "setWidget") {
+          const key = event.widgetKey as string;
+          const lines = event.widgetLines as string[] | undefined;
+          const placement = (event.widgetPlacement as "aboveEditor" | "belowEditor" | undefined) ?? "aboveEditor";
+          setUiWidgets((prev) => {
+            const next = prev.filter((w) => w.key !== key);
+            if (lines && lines.length) next.push({ key, lines, placement });
+            return next;
+          });
+        } else if (method === "setTitle") {
+          if (typeof document !== "undefined" && event.title) document.title = String(event.title);
+        }
+        // Other methods (set_editor_text, etc.) are TUI-only and ignored in pi-web.
+        break;
+      }
+      case "extension_ui_dismiss":
+        setUiDialog((prev) => (prev && prev.id === event.id ? null : prev));
         break;
     }
   }, [loadSession, onAgentEnd]);
@@ -578,6 +630,23 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [setToolPresetState]);
 
+  // Extension UI bridge (issue #68 follow-up): send the user's dialog answer back to
+  // the server-side command handler awaiting it.
+  const respondUiDialog = useCallback(async (id: string, response: ExtensionUiResponse) => {
+    setUiDialog((prev) => (prev && prev.id === id ? null : prev));
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      await sendAgentCommand(sid, { type: "extension_ui_response", id, ...response });
+    } catch (e) {
+      console.error("Failed to respond to extension UI:", e);
+    }
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setUiToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   // Host-level slash command dispatcher (see lib/slash-commands.ts). Reassigned each
   // render so it always closes over the latest handlers; handleSend invokes it via
   // dispatchSlashRef. Returns true when the input was a recognized built-in command
@@ -746,6 +815,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isCompacting, compactError, currentModel, displayModel, sessionStats,
     agentPhase,
     isNew,
+    // Extension UI bridge
+    uiDialog, uiWidgets, uiStatuses, uiToasts, respondUiDialog, dismissToast,
     // Refs
     sessionIdRef, eventSourceRef, messagesEndRef, scrollContainerRef,
     lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,

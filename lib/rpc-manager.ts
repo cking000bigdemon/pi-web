@@ -1,6 +1,11 @@
+import { randomUUID } from "crypto";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { cacheSessionPath } from "./session-reader";
-import type { AgentSessionLike, ToolInfo } from "./pi-types";
+import type { AgentSessionLike, BindableSession, ToolInfo, WebExtensionUIContext } from "./pi-types";
+
+// Fallback for ctx.ui.theme — pi-web has no TUI theme. A Proxy returns "" for any
+// property access so extensions that read theme colors degrade instead of crashing.
+const THEME_FALLBACK: unknown = new Proxy({}, { get: () => "" });
 
 // ============================================================================
 // Types
@@ -24,6 +29,11 @@ export class AgentSessionWrapper {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private onDestroyCallback: (() => void) | null = null;
   private _alive = true;
+  // Extension UI bridge (issue #68 follow-up): pending ui.select/confirm/input/editor
+  // requests awaiting a client response, and events emitted before any SSE listener
+  // attaches (buffered, then flushed on the first onEvent — covers the new-session race).
+  private pendingUiRequests = new Map<string, { resolve: (response: Record<string, unknown>) => void }>();
+  private eventBuffer: AgentEvent[] = [];
 
   constructor(public readonly inner: AgentSessionLike) {}
 
@@ -54,9 +64,123 @@ export class AgentSessionWrapper {
 
   onEvent(listener: EventListener): () => void {
     this.listeners.push(listener);
+    // Flush any events emitted before a listener existed (e.g. extension widgets
+    // set during bindExtensions' session_start, or a dialog opened on the first prompt).
+    if (this.eventBuffer.length) {
+      const buffered = this.eventBuffer;
+      this.eventBuffer = [];
+      for (const e of buffered) listener(e);
+    }
     return () => {
       const i = this.listeners.indexOf(listener);
       if (i !== -1) this.listeners.splice(i, 1);
+    };
+  }
+
+  /** Emit a wrapper-originated event (UI bridge) to listeners, buffering if none yet. */
+  private emitLocal(event: AgentEvent): void {
+    this.resetIdleTimer();
+    if (this.listeners.length === 0) {
+      this.eventBuffer.push(event);
+      return;
+    }
+    for (const l of this.listeners) l(event);
+  }
+
+  private resolveUiRequest(id: string, response: Record<string, unknown>): void {
+    const pending = this.pendingUiRequests.get(id);
+    if (pending) {
+      this.pendingUiRequests.delete(id);
+      pending.resolve(response);
+    }
+  }
+
+  /** Mirror of pi's rpc-mode dialog bridge: emit a request, await the client's response. */
+  private createDialogPromise<T>(
+    opts: { signal?: AbortSignal; timeout?: number } | undefined,
+    defaultValue: T,
+    request: Record<string, unknown>,
+    parse: (response: Record<string, unknown>) => T,
+  ): Promise<T> {
+    if (opts?.signal?.aborted) return Promise.resolve(defaultValue);
+    const id = randomUUID();
+    return new Promise<T>((resolve) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        opts?.signal?.removeEventListener("abort", onAbort);
+        this.pendingUiRequests.delete(id);
+      };
+      const onAbort = () => {
+        cleanup();
+        this.emitLocal({ type: "extension_ui_dismiss", id });
+        resolve(defaultValue);
+      };
+      opts?.signal?.addEventListener("abort", onAbort, { once: true });
+      if (opts?.timeout) {
+        timeoutId = setTimeout(() => {
+          cleanup();
+          this.emitLocal({ type: "extension_ui_dismiss", id });
+          resolve(defaultValue);
+        }, opts.timeout);
+      }
+      this.pendingUiRequests.set(id, { resolve: (response) => { cleanup(); resolve(parse(response)); } });
+      this.emitLocal({ type: "extension_ui_request", id, ...request });
+    });
+  }
+
+  /**
+   * Build the web ExtensionUIContext bound into the SDK so extension/package commands
+   * that call ctx.ui.* work in pi-web. Interactive dialogs (select/confirm/input/editor)
+   * round-trip to the browser; notify/setStatus/setWidget/setTitle are fire-and-forget;
+   * TUI-only capabilities (component factories, raw terminal input, themes, editor
+   * components) degrade to safe no-ops.
+   */
+  buildUiContext(): WebExtensionUIContext {
+    const fire = (request: Record<string, unknown>) =>
+      this.emitLocal({ type: "extension_ui_request", id: randomUUID(), ...request });
+    return {
+      select: (title, options, opts) =>
+        this.createDialogPromise<string | undefined>(opts, undefined, { method: "select", title, options, timeout: opts?.timeout },
+          (r) => (r.cancelled ? undefined : (r.value as string | undefined))),
+      confirm: (title, message, opts) =>
+        this.createDialogPromise<boolean>(opts, false, { method: "confirm", title, message, timeout: opts?.timeout },
+          (r) => (r.cancelled ? false : Boolean(r.confirmed))),
+      input: (title, placeholder, opts) =>
+        this.createDialogPromise<string | undefined>(opts, undefined, { method: "input", title, placeholder, timeout: opts?.timeout },
+          (r) => (r.cancelled ? undefined : (r.value as string | undefined))),
+      editor: (title, prefill) =>
+        this.createDialogPromise<string | undefined>(undefined, undefined, { method: "editor", title, prefill },
+          (r) => (r.cancelled ? undefined : (r.value as string | undefined))),
+      notify: (message, type) => fire({ method: "notify", message, notifyType: type }),
+      setStatus: (key, text) => fire({ method: "setStatus", statusKey: key, statusText: text }),
+      setWidget: (key, content, options) => {
+        // Only the string[] form is renderable in a browser; component factories are ignored.
+        if (content === undefined || Array.isArray(content)) {
+          fire({ method: "setWidget", widgetKey: key, widgetLines: content, widgetPlacement: options?.placement });
+        }
+      },
+      setTitle: (title) => fire({ method: "setTitle", title }),
+      pasteToEditor: (text) => fire({ method: "set_editor_text", text }),
+      setEditorText: (text) => fire({ method: "set_editor_text", text }),
+      getEditorText: () => "",
+      onTerminalInput: () => () => {},
+      setWorkingMessage: () => {},
+      setWorkingVisible: () => {},
+      setWorkingIndicator: () => {},
+      setHiddenThinkingLabel: () => {},
+      setFooter: () => {},
+      setHeader: () => {},
+      custom: async () => undefined,
+      addAutocompleteProvider: () => {},
+      setEditorComponent: () => {},
+      getEditorComponent: () => undefined,
+      get theme() { return THEME_FALLBACK; },
+      getAllThemes: () => [],
+      getTheme: () => undefined,
+      setTheme: () => ({ success: false, error: "Theme switching is not supported in pi-web" }),
+      getToolsExpanded: () => false,
+      setToolsExpanded: () => {},
     };
   }
 
@@ -245,6 +369,12 @@ export class AgentSessionWrapper {
         return null;
       }
 
+      case "extension_ui_response": {
+        // Client's answer to a ctx.ui.select/confirm/input/editor request
+        this.resolveUiRequest(command.id as string, command as Record<string, unknown>);
+        return null;
+      }
+
       default:
         throw new Error(`Unsupported command: ${type}`);
     }
@@ -358,6 +488,17 @@ export async function startRpcSession(
 
     const wrapper = new AgentSessionWrapper(inner);
     wrapper.start();
+
+    // Bind a web UI context so extension/package commands that call ctx.ui.* work
+    // in pi-web (issue #68 follow-up). Best-effort: a binding failure must not block
+    // session creation — the session simply falls back to no extension UI.
+    try {
+      // Cast to BindableSession: the SDK's real bindExtensions signature is intentionally
+      // not on AgentSessionLike (see pi-types.ts BindableSession).
+      await (inner as unknown as BindableSession).bindExtensions({ uiContext: wrapper.buildUiContext(), mode: "rpc" });
+    } catch (err) {
+      console.error("Failed to bind extension UI context:", err);
+    }
 
     const realSessionId = inner.sessionId as string;
     const realSessionFile = inner.sessionFile as string | undefined;

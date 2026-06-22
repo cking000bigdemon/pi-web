@@ -5,6 +5,7 @@ import type { AgentMessage, SessionInfo, SessionTreeNode } from "@/lib/types";
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { ExtensionDialog, ExtensionWidgets, ExtensionToasts } from "./ExtensionUi";
 import { useAgentSession, type AgentPhase } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -103,6 +104,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handleAbortCompaction,
     handleToolPresetChange, handleThinkingLevelChange, handleAgentEventRef,
+    uiDialog, uiWidgets, uiStatuses, uiToasts, respondUiDialog, dismissToast,
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange,
@@ -168,6 +170,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     : null;
 
   const chatInputElement = (
+    <>
+    <ExtensionWidgets widgets={uiWidgets} statuses={uiStatuses} />
     <ChatInput
       ref={chatInputRef}
       onSend={handleSend}
@@ -193,6 +197,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       soundEnabled={soundEnabled}
       onSoundToggle={onSoundToggle}
     />
+    </>
   );
 
   if (loading) {
@@ -250,6 +255,10 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
           </svg>
         </div>
       )}
+
+      {/* Extension UI bridge (issue #68 follow-up): dialogs + notify toasts overlay both states */}
+      <ExtensionToasts toasts={uiToasts} onDismiss={dismissToast} />
+      {uiDialog && <ExtensionDialog key={uiDialog.id} dialog={uiDialog} onRespond={respondUiDialog} />}
 
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">

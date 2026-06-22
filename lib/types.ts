@@ -190,6 +190,41 @@ export interface SessionContext {
   model: { provider: string; modelId: string } | null;
 }
 
+// Extension UI bridge (issue #68 follow-up): server-side extension/package commands
+// call ctx.ui.* which is bridged to the browser over the SSE event stream.
+export interface ExtensionUiDialog {
+  id: string;
+  method: "select" | "confirm" | "input" | "editor";
+  title: string;
+  message?: string;       // confirm
+  options?: string[];     // select
+  placeholder?: string;   // input
+  prefill?: string;       // editor
+  timeout?: number;       // optional auto-dismiss countdown (ms)
+}
+
+export interface ExtensionUiWidget {
+  key: string;
+  lines: string[];
+  placement: "aboveEditor" | "belowEditor";
+}
+
+export interface ExtensionUiStatus {
+  key: string;
+  text: string;
+}
+
+export interface ExtensionUiToast {
+  id: string;
+  message: string;
+  type: "info" | "warning" | "error";
+}
+
+export type ExtensionUiResponse =
+  | { cancelled: true }
+  | { value: string }
+  | { confirmed: boolean };
+
 // RPC types
 export interface RpcSessionState {
   model?: { provider: string; id: string; contextWindow?: number };

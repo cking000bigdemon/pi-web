@@ -22,6 +22,48 @@ export interface NavigateTreeResult {
   aborted?: boolean;
 }
 
+export type ExtensionModeName = "tui" | "rpc" | "json" | "print";
+
+export interface ExtensionUIDialogOptionsLike {
+  signal?: AbortSignal;
+  timeout?: number;
+}
+
+// pi-web's web implementation of the SDK ExtensionUIContext. Methods we can't
+// honor in a browser (TUI component factories, raw terminal input, themes) are
+// declared with loose types and implemented as safe no-ops. This is our own
+// boundary type — the SDK only sees it via AgentSessionLike.bindExtensions.
+export interface WebExtensionUIContext {
+  select(title: string, options: string[], opts?: ExtensionUIDialogOptionsLike): Promise<string | undefined>;
+  confirm(title: string, message: string, opts?: ExtensionUIDialogOptionsLike): Promise<boolean>;
+  input(title: string, placeholder?: string, opts?: ExtensionUIDialogOptionsLike): Promise<string | undefined>;
+  notify(message: string, type?: "info" | "warning" | "error"): void;
+  onTerminalInput(handler: (data: string) => unknown): () => void;
+  setStatus(key: string, text: string | undefined): void;
+  setWorkingMessage(message?: string): void;
+  setWorkingVisible(visible: boolean): void;
+  setWorkingIndicator(options?: unknown): void;
+  setHiddenThinkingLabel(label?: string): void;
+  setWidget(key: string, content: string[] | ((...args: unknown[]) => unknown) | undefined, options?: { placement?: "aboveEditor" | "belowEditor" }): void;
+  setFooter(factory: ((...args: unknown[]) => unknown) | undefined): void;
+  setHeader(factory: ((...args: unknown[]) => unknown) | undefined): void;
+  setTitle(title: string): void;
+  custom(factory: (...args: unknown[]) => unknown, options?: unknown): Promise<unknown>;
+  pasteToEditor(text: string): void;
+  setEditorText(text: string): void;
+  getEditorText(): string;
+  editor(title: string, prefill?: string): Promise<string | undefined>;
+  addAutocompleteProvider(factory: unknown): void;
+  setEditorComponent(factory: unknown): void;
+  getEditorComponent(): unknown;
+  readonly theme: unknown;
+  getAllThemes(): { name: string; path: string | undefined }[];
+  getTheme(name: string): unknown;
+  setTheme(theme: unknown): { success: boolean; error?: string };
+  getToolsExpanded(): boolean;
+  setToolsExpanded(expanded: boolean): void;
+}
+
 export interface SessionStatsResult {
   sessionFile: string | undefined;
   sessionId: string;
@@ -70,4 +112,14 @@ export interface AgentSessionLike {
   getSessionStats(): SessionStatsResult;
   getLastAssistantText(): string | undefined;
   setSessionName(name: string): void;
+}
+
+// Extension UI bridge (issue #68 follow-up): the subset used to bind a web UI context.
+// Kept separate from AgentSessionLike because the SDK's real bindExtensions takes a
+// broad ExtensionBindings whose ExtensionUIContext (with TUI-component factory overloads)
+// is contravariantly incompatible with our loosely-typed WebExtensionUIContext — declaring
+// it on AgentSessionLike would break the structural assignment from the SDK's AgentSession.
+// rpc-manager casts the session to this only for the bind call.
+export interface BindableSession {
+  bindExtensions(bindings: { uiContext: WebExtensionUIContext; mode?: ExtensionModeName }): Promise<void>;
 }
