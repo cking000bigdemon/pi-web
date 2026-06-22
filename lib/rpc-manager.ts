@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { cacheSessionPath } from "./session-reader";
 import type { AgentSessionLike, BindableSession, ToolInfo, WebExtensionUIContext } from "./pi-types";
+import type { SlashCommandSourceInfo } from "./types";
 
 // Fallback for ctx.ui.theme — pi-web has no TUI theme. A Proxy returns "" for any
 // property access so extensions that read theme colors degrade instead of crashing.
@@ -403,6 +404,7 @@ export class AgentSessionWrapper {
 declare global {
   var __piSessions: Map<string, AgentSessionWrapper> | undefined;
   var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
+  var __piCommandsCache: Map<string, { ts: number; commands: SlashCommandSourceInfo[] }> | undefined;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -519,4 +521,48 @@ export async function startRpcSession(
 
   locks.set(sessionId, starting);
   return starting;
+}
+
+/**
+ * List extension/skill/prompt slash commands available for a cwd, for autocomplete.
+ * Uses DefaultResourceLoader directly (discovery only — does NOT create a session file,
+ * unlike createAgentSession), and caches per-cwd for 30s. Built-in commands are merged
+ * in on the client (lib/slash-commands.ts).
+ */
+export async function listSlashCommands(cwd: string): Promise<SlashCommandSourceInfo[]> {
+  if (!globalThis.__piCommandsCache) globalThis.__piCommandsCache = new Map();
+  const cache = globalThis.__piCommandsCache;
+  const now = Date.now();
+  const cached = cache.get(cwd);
+  if (cached && now - cached.ts < 30_000) return cached.commands;
+
+  const { DefaultResourceLoader, SettingsManager, getAgentDir } = await import("@earendil-works/pi-coding-agent");
+  const agentDir = getAgentDir();
+  const settingsManager = SettingsManager.create(cwd, agentDir);
+  const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+  await loader.reload();
+
+  const commands: SlashCommandSourceInfo[] = [];
+  const seen = new Set<string>();
+  for (const ext of loader.getExtensions().extensions) {
+    for (const cmd of ext.commands.values()) {
+      if (seen.has(cmd.name)) continue;
+      seen.add(cmd.name);
+      commands.push({ name: cmd.name, description: cmd.description, source: "extension" });
+    }
+  }
+  for (const skill of loader.getSkills().skills) {
+    const name = `skill:${skill.name}`;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    commands.push({ name, description: skill.description, source: "skill" });
+  }
+  for (const tpl of loader.getPrompts().prompts) {
+    if (seen.has(tpl.name)) continue;
+    seen.add(tpl.name);
+    commands.push({ name: tpl.name, description: tpl.description, source: "prompt" });
+  }
+
+  cache.set(cwd, { ts: now, commands });
+  return commands;
 }

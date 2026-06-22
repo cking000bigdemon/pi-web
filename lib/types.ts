@@ -225,6 +225,14 @@ export type ExtensionUiResponse =
   | { value: string }
   | { confirmed: boolean };
 
+// Slash-command autocomplete: extension/skill/prompt commands discovered for a cwd
+// (built-in commands live client-side in lib/slash-commands.ts and are merged in).
+export interface SlashCommandSourceInfo {
+  name: string;        // command name without leading slash; skills are already "skill:<name>"
+  description?: string;
+  source: "extension" | "skill" | "prompt";
+}
+
 // RPC types
 export interface RpcSessionState {
   model?: { provider: string; id: string; contextWindow?: number };

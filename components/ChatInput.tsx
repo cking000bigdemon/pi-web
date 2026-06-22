@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { useRef, useState, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import { PI_WEB_SLASH_COMMANDS } from "@/lib/slash-commands";
+import type { SlashCommandSourceInfo } from "@/lib/types";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -37,6 +39,24 @@ interface Props {
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
   soundEnabled?: boolean;
   onSoundToggle?: () => void;
+  /** Working directory for slash-command autocomplete (extension/skill commands). */
+  cwd?: string | null;
+}
+
+interface SlashItem {
+  name: string;
+  description?: string;
+  source: "builtin" | "extension" | "skill" | "prompt";
+  category?: "action" | "gui" | "unsupported";
+}
+
+function slashSourceLabel(item: SlashItem): string {
+  if (item.source === "builtin") {
+    return item.category === "gui" ? "界面" : item.category === "unsupported" ? "暂不支持" : "内置";
+  }
+  if (item.source === "extension") return "扩展";
+  if (item.source === "skill") return "技能";
+  return "模板";
 }
 
 export interface ChatInputHandle {
@@ -65,7 +85,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onCompact, onAbortCompaction, isCompacting, compactError, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo,
-  soundEnabled, onSoundToggle,
+  soundEnabled, onSoundToggle, cwd,
 }: Props, ref) {
   const [value, setValue] = useState("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -73,6 +93,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+
+  // ── Slash-command autocomplete ──
+  const [serverCommands, setServerCommands] = useState<SlashCommandSourceInfo[]>([]);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const fetchedCwdRef = useRef<string | null | undefined>(undefined);
+  const slashItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -82,6 +109,73 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndAtRef = useRef(0);
+
+  // The command-name prefix while typing a slash command: "/foo" -> "foo", "/" -> "".
+  // null when the input isn't a single "/<token>" (e.g. has a space, or is prose).
+  const slashPrefix = useMemo(() => {
+    const m = value.match(/^\/(\S*)$/);
+    return m ? m[1] : null;
+  }, [value]);
+
+  const builtinItems = useMemo<SlashItem[]>(
+    () => Object.entries(PI_WEB_SLASH_COMMANDS).map(([name, spec]) => ({
+      name, description: spec.description, source: "builtin", category: spec.category,
+    })),
+    [],
+  );
+
+  // Fetch extension/skill/prompt commands for the cwd once we enter slash mode (per cwd).
+  useEffect(() => {
+    if (slashPrefix === null) return;
+    if (fetchedCwdRef.current === (cwd ?? null)) return;
+    fetchedCwdRef.current = cwd ?? null;
+    if (!cwd) { setServerCommands([]); return; }
+    let cancelled = false;
+    fetch(`/api/commands?cwd=${encodeURIComponent(cwd)}`)
+      .then((r) => r.json())
+      .then((d: { commands?: SlashCommandSourceInfo[] }) => { if (!cancelled) setServerCommands(d.commands ?? []); })
+      .catch(() => { if (!cancelled) setServerCommands([]); });
+    return () => { cancelled = true; };
+  }, [slashPrefix, cwd]);
+
+  const slashItems = useMemo<SlashItem[]>(() => {
+    if (slashPrefix === null) return [];
+    const builtinNames = new Set(builtinItems.map((i) => i.name));
+    const merged: SlashItem[] = [...builtinItems];
+    for (const c of serverCommands) if (!builtinNames.has(c.name)) merged.push({ name: c.name, description: c.description, source: c.source });
+    const p = slashPrefix.toLowerCase();
+    return merged
+      .filter((i) => i.name.toLowerCase().includes(p))
+      .sort((a, b) => {
+        const aw = a.name.toLowerCase().startsWith(p) ? 0 : 1;
+        const bw = b.name.toLowerCase().startsWith(p) ? 0 : 1;
+        return aw !== bw ? aw - bw : a.name.localeCompare(b.name);
+      });
+  }, [slashPrefix, builtinItems, serverCommands]);
+
+  const slashOpen = slashPrefix !== null && slashItems.length > 0 && !slashDismissed;
+
+  // Reset highlight + un-dismiss when the typed command text changes.
+  useEffect(() => { setSlashIndex(0); setSlashDismissed(false); }, [slashPrefix]);
+
+  // Keep the highlighted item in view.
+  useEffect(() => {
+    if (slashOpen) slashItemRefs.current[slashIndex]?.scrollIntoView({ block: "nearest" });
+  }, [slashIndex, slashOpen]);
+
+  const acceptSlash = useCallback((item: SlashItem) => {
+    const next = `/${item.name} `;
+    setValue(next);
+    setSlashDismissed(true);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(next.length, next.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    });
+  }, []);
 
   useImperativeHandle(ref, () => ({
     insertIfEmpty(text: string) {
@@ -200,6 +294,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
 
+      // Slash-command autocomplete navigation takes precedence over send.
+      if (slashOpen && !isComposing) {
+        if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex((i) => (i + 1) % slashItems.length); return; }
+        if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex((i) => (i - 1 + slashItems.length) % slashItems.length); return; }
+        if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") { e.preventDefault(); acceptSlash(slashItems[slashIndex] ?? slashItems[0]); return; }
+        if (e.key === "Escape") { e.preventDefault(); setSlashDismissed(true); return; }
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
@@ -210,7 +312,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isStreaming, onSteer, onFollowUp, sendQueued, handleSend]
+    [isStreaming, onSteer, onFollowUp, sendQueued, handleSend, slashOpen, slashItems, slashIndex, acceptSlash]
   );
 
   const handleInput = useCallback(() => {
@@ -345,7 +447,53 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
 
-        {/* Main input */}
+        {/* Main input (wrapped for slash-command autocomplete positioning) */}
+        <div style={{ position: "relative" }}>
+        {slashOpen && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 6px)",
+              left: 0,
+              right: 0,
+              zIndex: 200,
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              boxShadow: "0 -4px 16px rgba(0,0,0,0.12)",
+              maxHeight: 280,
+              overflowY: "auto",
+            }}
+          >
+            {slashItems.map((item, i) => (
+              <button
+                key={`${item.source}:${item.name}`}
+                ref={(el) => { slashItemRefs.current[i] = el; }}
+                onMouseDown={(e) => { e.preventDefault(); acceptSlash(item); }}
+                onMouseEnter={() => setSlashIndex(i)}
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 8,
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "6px 12px",
+                  background: i === slashIndex ? "var(--bg-selected)" : "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, color: i === slashIndex ? "var(--text)" : "var(--text-muted)", flexShrink: 0 }}>
+                  /{item.name}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                  {item.description}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>{slashSourceLabel(item)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div
           style={{
             display: "flex",
@@ -476,6 +624,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               Send
             </button>
           )}
+        </div>
         </div>
 
         {/* Bottom bar: left | center (context) | right */}
