@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0A0A0A;font-family:'Segoe UI','Open Sans',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif}
+  .tile{transition:transform .26s cubic-bezier(.2,.7,.3,1)}
+  th,td{text-align:left}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#0A0A0A;color:#fff;padding:56px 48px 88px;overflow-x:hidden">
+
+  <div style="text-transform:uppercase;letter-spacing:4px;font-size:12px;font-weight:600;color:#6A6A6A;margin-bottom:16px">源码校准 · grounded in agegr/pi-web @ main</div>
+  <h1 style="font-size:60px;font-weight:200;line-height:.95;letter-spacing:-2px;margin-bottom:14px">Pi Agent · 校准说明</h1>
+  <p style="max-width:760px;font-size:16px;font-weight:300;line-height:1.6;color:#A6A6A6">把动态磁贴设计语言<b style="font-weight:600;color:#fff">逐一锚定到真实源码</b>：Token 变量沿用、布局尺寸、文案词表、速率阈值、组件边界与契约。视觉层重做，<b style="color:#fff;font-weight:600">功能集 / API / SSE / 数据模型 / 键盘 1:1 不变</b>。</p>
+
+  <!-- ===== TOKEN MAPPING ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">01 / Tokens</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:8px">变量映射（沿用变量名，取值改磁贴风）</h2>
+    <p style="font-size:13px;color:#6A6A6A;margin-bottom:22px;font-family:'JetBrains Mono',monospace">app/globals.css · :root + html.dark · 保留全部变量名以维持可换肤</p>
+    <div style="overflow:hidden;background:#141414;font-size:13px;line-height:1.5">
+      <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px">
+        <thead><tr style="color:#6A6A6A;text-transform:uppercase;letter-spacing:.5px;font-size:10px">
+          <th style="padding:12px 14px">变量</th><th style="padding:12px 14px">旧·浅</th><th style="padding:12px 14px">旧·深</th><th style="padding:12px 14px">磁贴风新值</th>
+        </tr></thead>
+        <tbody style="color:#e8e8e8">
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--bg</td><td style="padding:9px 14px;color:#6A6A6A">#ffffff</td><td style="padding:9px 14px;color:#6A6A6A">#1a1a1a</td><td style="padding:9px 14px">#F2F2F2 / <b style="color:#fff">#0A0A0A</b> 近黑</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--bg-panel</td><td style="padding:9px 14px;color:#6A6A6A">#f5f5f5</td><td style="padding:9px 14px;color:#6A6A6A">#242424</td><td style="padding:9px 14px">#FFFFFF / #141414</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--bg-selected</td><td style="padding:9px 14px;color:#6A6A6A">#e8e8e8</td><td style="padding:9px 14px;color:#6A6A6A">#383838</td><td style="padding:9px 14px;color:#9bd05a">→ 强调色实心块（选中=纯色）</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--border</td><td style="padding:9px 14px;color:#6A6A6A">#e0e0e0</td><td style="padding:9px 14px;color:#6A6A6A">#3a3a3a</td><td style="padding:9px 14px;color:#E5746a">→ 移除（磁贴无边框），仅极淡 --grid</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--text</td><td style="padding:9px 14px;color:#6A6A6A">#1a1a1a</td><td style="padding:9px 14px;color:#6A6A6A">#e8e8e8</td><td style="padding:9px 14px">#1A1A1A / #FFFFFF</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--accent</td><td style="padding:9px 14px;color:#6A6A6A">#2563eb</td><td style="padding:9px 14px;color:#6A6A6A">#60a5fa</td><td style="padding:9px 14px"><span style="display:inline-block;width:10px;height:10px;background:#0050EF;vertical-align:-1px;margin-right:5px"></span><b style="color:#fff">#0050EF</b> cobalt · 用户可换 WP 个性色</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--user-bg</td><td style="padding:9px 14px;color:#6A6A6A">#eff6ff</td><td style="padding:9px 14px;color:#6A6A6A">#1e293b</td><td style="padding:9px 14px;color:#9bd05a">→ 强调色实心块（白字）</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--assistant-bg</td><td style="padding:9px 14px;color:#6A6A6A">#ffffff</td><td style="padding:9px 14px;color:#6A6A6A">#1a1a1a</td><td style="padding:9px 14px;color:#9bd05a">→ 面板色块 + 左侧强调竖条</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--tool-bg</td><td style="padding:9px 14px;color:#6A6A6A">#f9fafb</td><td style="padding:9px 14px;color:#6A6A6A">#1f2937</td><td style="padding:9px 14px;color:#9bd05a">→ 可翻转磁贴（teal；错误=crimson）</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#1BA1E2">--font-mono</td><td style="padding:9px 14px;color:#6A6A6A" colspan="2">noto-mono · JetBrains Mono · Consolas…</td><td style="padding:9px 14px">保留（代码区不受磁贴风影响）</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#60A917">+ --font-ui</td><td style="padding:9px 14px;color:#6A6A6A" colspan="2">新增</td><td style="padding:9px 14px">'Segoe UI', Selawik, system-ui…</td></tr>
+          <tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:9px 14px;color:#60A917">+ --tile-*</td><td style="padding:9px 14px;color:#6A6A6A" colspan="2">新增</td><td style="padding:9px 14px">14 色 WP 个性调色板</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:12px;color:#6A6A6A;margin-top:12px;line-height:1.6">主题切换在源码里是 <b style="color:#A6A6A6">View Transitions API 的圆形擦除</b>（useTheme.ts 用 clip-path animate 驱动）—— 这一标志性过场<b style="color:#fff">保留</b>，与磁贴交错入场相辅相成。</p>
+  </div>
+
+  <!-- ===== DIMENSIONS ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">02 / Layout</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:22px">真实尺寸（直接照搬，磁贴墙在其内排布）</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="tile" onMouseMove="{{ onTilt }}" onMouseLeave="{{ onTiltEnd }}" style="width:170px;height:108px;background:#0050EF;color:#fff;padding:13px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer"><span style="font-size:12px;font-weight:600;opacity:.85">左会话栏</span><span style="font-size:28px;font-weight:300;font-family:'JetBrains Mono',monospace">260px</span><span style="font-size:10px;opacity:.8;font-family:'JetBrains Mono',monospace">折叠→0</span></div>
+      <div class="tile" onMouseMove="{{ onTilt }}" onMouseLeave="{{ onTiltEnd }}" style="width:170px;height:108px;background:#00ABA9;color:#fff;padding:13px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer"><span style="font-size:12px;font-weight:600;opacity:.85">右文件面板</span><span style="font-size:28px;font-weight:300;font-family:'JetBrains Mono',monospace">42vw</span><span style="font-size:10px;opacity:.8;font-family:'JetBrains Mono',monospace">min 300px</span></div>
+      <div class="tile" onMouseMove="{{ onTilt }}" onMouseLeave="{{ onTiltEnd }}" style="width:170px;height:108px;background:#FA6800;color:#fff;padding:13px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer"><span style="font-size:12px;font-weight:600;opacity:.85">移动断点</span><span style="font-size:28px;font-weight:300;font-family:'JetBrains Mono',monospace">≤640px</span><span style="font-size:10px;opacity:.8;font-family:'JetBrains Mono',monospace">抽屉化</span></div>
+      <div class="tile" onMouseMove="{{ onTilt }}" onMouseLeave="{{ onTiltEnd }}" style="width:170px;height:108px;background:#76608A;color:#fff;padding:13px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer"><span style="font-size:12px;font-weight:600;opacity:.85">移动抽屉</span><span style="font-size:28px;font-weight:300;font-family:'JetBrains Mono',monospace">280px</span><span style="font-size:10px;opacity:.8;font-family:'JetBrains Mono',monospace">max 85vw</span></div>
+      <div class="tile" onMouseMove="{{ onTilt }}" onMouseLeave="{{ onTiltEnd }}" style="width:170px;height:108px;background:#60A917;color:#fff;padding:13px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer"><span style="font-size:12px;font-weight:600;opacity:.85">输入区</span><span style="font-size:28px;font-weight:300;font-family:'JetBrains Mono',monospace">820px</span><span style="font-size:10px;opacity:.8;font-family:'JetBrains Mono',monospace">textarea max 200px</span></div>
+      <div class="tile" onMouseMove="{{ onTilt }}" onMouseLeave="{{ onTiltEnd }}" style="width:170px;height:108px;background:#647687;color:#fff;padding:13px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer"><span style="font-size:12px;font-weight:600;opacity:.85">本地端口</span><span style="font-size:28px;font-weight:300;font-family:'JetBrains Mono',monospace">30141</span><span style="font-size:10px;opacity:.8;font-family:'JetBrains Mono',monospace">npx @agegr/pi-web</span></div>
+    </div>
+  </div>
+
+  <!-- ===== RATE BADGE ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">03 / Rate Badge</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:8px">t/s 速率徽章阈值（精确照搬）</h2>
+    <p style="font-size:13px;color:#6A6A6A;margin-bottom:22px;font-family:'JetBrains Mono',monospace">MessageView.tsx · est token = chars / 4 · 显示 {tps.toFixed(1)} t/s</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><div style="width:150px;height:62px;background:#1BA1E2;color:#fff;padding:11px;display:flex;flex-direction:column;justify-content:space-between"><span style="font-size:12px;font-weight:600">≥ 50 t/s</span><span style="font-size:10px;opacity:.85;font-family:'JetBrains Mono',monospace">原 #53b3cb → cyan</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><div style="width:150px;height:62px;background:#60A917;color:#fff;padding:11px;display:flex;flex-direction:column;justify-content:space-between"><span style="font-size:12px;font-weight:600">≥ 30 t/s</span><span style="font-size:10px;opacity:.85;font-family:'JetBrains Mono',monospace">原 #9bc53d → green</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><div style="width:150px;height:62px;background:#F0A30A;color:#fff;padding:11px;display:flex;flex-direction:column;justify-content:space-between"><span style="font-size:12px;font-weight:600">≥ 15 t/s</span><span style="font-size:10px;opacity:.85;font-family:'JetBrains Mono',monospace">原 #f9c22e → amber</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><div style="width:150px;height:62px;background:#E51400;color:#fff;padding:11px;display:flex;flex-direction:column;justify-content:space-between"><span style="font-size:12px;font-weight:600">&lt; 15 t/s</span><span style="font-size:10px;opacity:.85;font-family:'JetBrains Mono',monospace">原 #e01a4f → red</span></div></div>
+    </div>
+    <p style="font-size:12px;color:#6A6A6A;margin-top:14px;line-height:1.6">同理：<b style="color:#A6A6A6">上下文用量</b> &gt;90% 红 / &gt;70% 黄；<b style="color:#A6A6A6">用量页脚</b> <code style="font-family:'JetBrains Mono',monospace;color:#9bd05a">N in · N out · N cache · $X.XXXX</code>（cost 4 位小数，源码 toFixed(4)）。</p>
+  </div>
+
+  <!-- ===== COMPONENT INVENTORY ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">04 / Components</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:8px">组件边界（props 兼容，便于直接替换）</h2>
+    <p style="font-size:13px;color:#6A6A6A;margin-bottom:22px;font-family:'JetBrains Mono',monospace">components/ · 15 组件 + hooks/useAgentSession + app/globals.css</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:6px;max-width:1180px">
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">AppShell</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">三栏外壳 · 顶栏 · 共享下拉 · 33.7k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">SessionSidebar</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">会话浏览 · cwd · Explorer · 44.4k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">ChatWindow</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">编排 · Typewriter · 阶段提示 · 16.7k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">ChatInput</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">输入 · 全部控件 · 44.0k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">MessageView</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">消息 · 工具块 · t/s · 27.7k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">MarkdownBody</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">GFM · KaTeX · 代码高亮 · 8.8k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">FileViewer</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">文本/Diff/图片/PDF/DOCX · 32.8k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">FileExplorer</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">懒加载文件树 · @ 引用 · 8.6k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">FileIcons</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">文件类型图标 · 11.8k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">TabBar</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">多标签 · 3.2k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">ModelsConfig</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">OAuth/Key/自定义 · 76.2k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">SkillsConfig</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">project/global · skills.sh · 28.5k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">BranchNavigator</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">分支树 · U/A 角色 · 13.2k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">ChatMinimap</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">右侧细条 · 可拖拽 · 12.8k</div></div>
+      <div style="background:#141414;padding:12px 13px"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">ToolPanel</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">工具开关 · 4.3k</div></div>
+      <div style="background:#1c1c1c;padding:12px 13px;border-left:3px solid #0050EF"><div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#1BA1E2">useAgentSession</div><div style="font-size:10px;color:#6A6A6A;margin-top:3px">SSE 流 + 命令契约（状态层）</div></div>
+    </div>
+  </div>
+
+  <!-- ===== CONTRACT ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">05 / Contract · 1:1 保留</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:22px">命令 / SSE / URL 契约（不可改）</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:300px;background:#141414;padding:18px"><div style="font-size:11px;color:#6A6A6A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">POST /api/agent/&lt;id&gt; — 命令</div><div style="display:flex;flex-wrap:wrap;gap:6px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0050EF;color:#fff;padding:4px 9px">prompt</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">steer</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">follow_up</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">abort</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">fork</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">navigate_tree</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">set_model</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">set_tools</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">set_thinking_level</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">compact</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">abort_compaction</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">get_tools</span>
+      </div></div>
+      <div style="flex:1;min-width:300px;background:#141414;padding:18px"><div style="font-size:11px;color:#6A6A6A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">GET /api/agent/&lt;id&gt;/events — SSE</div><div style="display:flex;flex-wrap:wrap;gap:6px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#00ABA9;color:#fff;padding:4px 9px">agent_start</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">message_start</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">message_update</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">message_end</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">tool_execution_start</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">tool_execution_end</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">agent_end</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">auto_retry_start/end</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#1c1c1c;color:#A6A6A6;padding:4px 9px">(auto_)compaction_start/end</span>
+      </div></div>
+    </div>
+    <div style="margin-top:8px;background:#141414;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#A6A6A6">单路由 SPA · URL <span style="color:#9bd05a">?session=&lt;id&gt;</span> 同步选中会话 · 会话文件 <span style="color:#9bd05a">~/.pi/agent/sessions/&lt;cwd&gt;/&lt;ts&gt;_&lt;uuid&gt;.jsonl</span></div>
+  </div>
+
+  <!-- ===== VOCAB ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">06 / Copy</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:22px">文案词表（逐字照搬）</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:260px;background:#141414;padding:18px"><div style="font-size:11px;color:#6A6A6A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Thinking 级别</div><div style="font-size:13px;line-height:2;font-family:'JetBrains Mono',monospace"><div><span style="color:#fff">auto</span> <span style="color:#6A6A6A">沿用 pi 默认设置</span></div><div><span style="color:#fff">off</span> <span style="color:#6A6A6A">关闭推理</span></div><div><span style="color:#fff">minimal</span> <span style="color:#6A6A6A">最少推理</span></div><div><span style="color:#fff">low</span> <span style="color:#6A6A6A">低强度推理</span></div><div><span style="color:#fff">medium</span> <span style="color:#6A6A6A">中等推理</span></div><div><span style="color:#fff">high</span> <span style="color:#6A6A6A">高强度推理</span></div><div><span style="color:#fff">xhigh</span> <span style="color:#6A6A6A">最高强度推理</span></div></div></div>
+      <div style="flex:1;min-width:260px;display:flex;flex-direction:column;gap:8px">
+        <div style="background:#141414;padding:18px"><div style="font-size:11px;color:#6A6A6A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">工具预设</div><div style="font-size:13px;line-height:2;font-family:'JetBrains Mono',monospace"><div><span style="color:#fff">off</span> <span style="color:#6A6A6A">无工具，纯聊天</span></div><div><span style="color:#fff">default</span> <span style="color:#6A6A6A">4 项内置工具</span></div><div><span style="color:#fff">full</span> <span style="color:#6A6A6A">全部内置工具</span></div></div></div>
+        <div style="background:#141414;padding:18px"><div style="font-size:11px;color:#6A6A6A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">占位符（随状态）</div><div style="font-size:12px;line-height:1.9;font-family:'JetBrains Mono',monospace;color:#A6A6A6"><div>空闲 · Message…</div><div>运行 · Agent is running…</div><div>流式 · Steer 立即注入 / Follow-up 排队…</div></div></div>
+      </div>
+      <div style="flex:1;min-width:260px;background:#141414;padding:18px"><div style="font-size:11px;color:#6A6A6A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">按钮 / 反馈</div><div style="font-size:12px;line-height:1.95;font-family:'JetBrains Mono',monospace;color:#A6A6A6"><div>Send · Steer · Follow-up · Stop</div><div>Compact → Compacting…</div><div>Copy → Copied</div><div>Edit from here（navigate_tree）</div><div>New session → Creating…（fork）</div><div>Retrying (n/m)… — error</div><div>✓ Installed · watch · (no output)</div></div></div>
+    </div>
+  </div>
+
+  <!-- ===== DELTAS ===== -->
+  <div style="margin-top:64px">
+    <div style="text-transform:uppercase;letter-spacing:3px;font-size:12px;font-weight:600;color:#0050EF;margin-bottom:8px">07 / Delta</div>
+    <h2 style="font-size:34px;font-weight:200;letter-spacing:-.5px;margin-bottom:22px">重做边界</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:320px;background:#0A2A12;border-left:4px solid #60A917;padding:20px"><div style="font-size:13px;font-weight:600;color:#9bd05a;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px">1:1 保留 · 不可改</div><div style="font-size:14px;line-height:1.85;color:#cfe8b8">功能集 A–J（每条都在）· 后端 API / SSE / 命令契约 · 数据模型 · URL <code style="font-family:'JetBrains Mono',monospace">?session</code> 状态 · 键盘 + IME 行为 · 浅/深双主题可换肤架构 · 品牌名固定 <b style="color:#fff">"Pi Agent"</b></div></div>
+      <div style="flex:1;min-width:320px;background:#1A0A20;border-left:4px solid #6A00FF;padding:20px"><div style="font-size:13px;font-weight:600;color:#c9a3ff;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px">视觉层重做 · 动态磁贴</div><div style="font-size:14px;line-height:1.85;color:#d8c3ec">直角纯色磁贴（去边框/圆角/阴影）· 层级靠颜色+留白+字号 · Segoe UI Light 标题 · Fluent 线性图标 · flip / tilt / pulse / stagger 动效 · 强调色→WP 个性色 · View Transition 圆形擦除保留</div></div>
+    </div>
+  </div>
+
+  <div style="margin-top:56px;max-width:820px;border-top:1px solid rgba(255,255,255,.08);padding-top:22px;font-size:12px;color:#6A6A6A;line-height:1.7;font-family:'JetBrains Mono',monospace">
+    源码：github.com/agegr/pi-web @ a7c5de3 · 校准对照 globals.css · ChatInput.tsx · MessageView.tsx · README.md · 组件 tree。下一步可逐组件输出可替换的 React/Next 实现（props 与 useAgentSession 兼容）。
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.onTilt = (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - 0.5;
+      const y = (e.clientY - r.top) / r.height - 0.5;
+      e.currentTarget.style.transform = `perspective(600px) rotateY(${x*12}deg) rotateX(${-y*12}deg) scale(0.96)`;
+    };
+    this.onTiltEnd = (e) => { e.currentTarget.style.transform = ''; };
+  }
+  renderVals(){
+    return { onTilt: this.onTilt, onTiltEnd: this.onTiltEnd };
+  }
+}
+</script>
+</body>
+</html>

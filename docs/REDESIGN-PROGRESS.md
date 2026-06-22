@@ -1,0 +1,29 @@
+# Pi Agent — Metro 磁贴重做 · 进度锚点
+
+参考: `design-hifi-screens.dc.html` · `design-tile-language.dc.html` · `design-source-calibration.dc.html` · `redesign-brief.md`
+原则: **仅视觉层**重做为动态磁贴; 功能集 / API / SSE / 命令 / 数据模型 / 键盘 **1:1 不变**; 品牌名固定 **"Pi Agent"**。
+每完成一项: 勾 [x] + 在 dev(`npm run dev` → localhost:30141)验证功能正常。
+
+## 阶段
+- [x] 0. 存稿 (3 份 .dc.html → docs/)
+- [x] 1. 基础层: globals.css 磁贴 token(沿用变量名,值改 Metro) + `--font-ui`/`--tile-*` + Metro keyframes(tileIn/flipY/pulseGlow/dotPulse); layout.tsx Open Sans + title; "Pi Agent Web"→"Pi Agent"(layout/ChatWindow/SessionSidebar)
+- [ ] 2. AppShell: 三栏外壳 + 48px 顶栏(主题/Export/Branches/System + 实时统计磁贴条) + 悬浮文件面板开关; 直角化、去边框
+- [ ] 3. SessionSidebar → 会话磁贴墙(按 cwd 分组; 流式=pulseGlow+dotPulse; 角标消息数; 选中=实心强调) + cwd 选择器 + New/Refresh 操作磁贴 + Explorer + Models/Skills 操作磁贴
+- [ ] 4. ChatInput: 底部 Metro 命令栏; Send/Steer(amber)/Follow-up(steel)/Stop(red) 方块; 模型/thinking/工具预设/Compact/声音; 占位符词表
+- [ ] 5. MessageView: 用户=强调色实心块(白字); 助手=面板块+左4px强调竖条; t/s 徽章阈值(≥50 cyan #1BA1E2 / ≥30 green #60A917 / ≥15 amber #F0A30A / <15 red #E51400); 用量页脚 `N in · N out · N cache · $X.XXXX`(toFixed(4)); 思考折叠条; 工具调用=可翻转 teal 磁贴(错误=crimson)
+- [ ] 6. MarkdownBody/CodeBlock: 代码块直角、JetBrains Mono、复制; Mermaid 预览/源码; KaTeX 保留
+- [ ] 7. FileViewer/TabBar/FileExplorer: 直角化; watch 绿点; Source/Diff(Myers, +绿/−红); Tab 选中顶部强调条; 树 @ 引用
+- [ ] 8. ModelsConfig: Metro 弹窗; provider 彩色磁贴/列表; Save 绿对勾动画; OAuth 登录流
+- [ ] 9. SkillsConfig: Metro 弹窗; project/global 分组; 启停开关; 搜 skills.sh/安装
+- [ ] 10. BranchNavigator / ChatMinimap: 分支树 U/A 角色; minimap 细条
+- [ ] 11. 移动端 ≤640px: 抽屉 / 英雄 / 全屏文件; 磁贴重排
+- [ ] 12. 全屏走查 + 深浅双主题 + commit/push
+
+## 契约红线(每屏都要守住)
+命令 POST /api/agent/<id>: prompt/steer/follow_up/abort/fork/navigate_tree/set_model/set_tools/set_thinking_level/compact/abort_compaction/get_tools
+SSE /api/agent/<id>/events: agent_start/message_*/tool_execution_*/agent_end/auto_retry_*/(auto_)compaction_*
+URL ?session=<id> · 尺寸 sidebar 260 / file 42vw min300 / 移动 ≤640 抽屉280 max85vw / 输入 max-width820 textarea max200
+
+## 验证记录
+- iter1 ✓: `npm run dev` boot HTTP 200 (~6s, Turbopack) · `<title>Pi Agent` · 无 stale "Pi Agent Web" · stderr clean。
+  - **修了 dev 启动坑**: next.config 加 `turbopack: {}` —— Next 16 默认 Turbopack，与 build 用的 `webpack` 钩子冲突，否则 `next dev` 直接 exit 255 起不来。dev→Turbopack，`build --webpack`→webpack 钩子(nft 修复)各行其道。

@@ -10,6 +10,11 @@ try {
 } catch { /* package not found, use default */ }
 
 const nextConfig: NextConfig = {
+  // Next 16 defaults dev (and build) to Turbopack. The build-only `webpack`
+  // hook below would otherwise make `next dev` refuse to start ("custom webpack
+  // config with Turbopack"). An empty turbopack config acknowledges the split:
+  // `next dev` uses Turbopack (fast HMR), `next build --webpack` uses the hook.
+  turbopack: {},
   serverExternalPackages: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai"],
   allowedDevOrigins: ['192.168.*.*'],
   env: {
