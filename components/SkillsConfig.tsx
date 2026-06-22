@@ -54,7 +54,7 @@ function Toggle({
         border: "none",
         padding: 0,
         cursor: loading ? "wait" : "pointer",
-        background: enabled ? "var(--accent)" : "var(--border)",
+        background: enabled ? "#60A917" : "var(--border)",
         position: "relative",
         transition: "background 0.18s",
         outline: "none",
@@ -109,7 +109,7 @@ function SkillDetail({
           style={{
             fontSize: 10,
             padding: "1px 5px",
-            borderRadius: 3,
+            borderRadius: 0,
             flexShrink: 0,
             background:
               label === "project"
@@ -290,7 +290,7 @@ function AddSkillPanel({
               fontSize: 13,
               background: "var(--bg-panel)",
               border: "1px solid var(--border)",
-              borderRadius: 6,
+              borderRadius: 0,
               color: "var(--text)",
               outline: "none",
             }}
@@ -301,7 +301,7 @@ function AddSkillPanel({
             style={{
               padding: "7px 16px",
               fontSize: 13,
-              borderRadius: 6,
+              borderRadius: 0,
               border: "none",
               background: "var(--accent)",
               color: "#fff",
@@ -319,7 +319,7 @@ function AddSkillPanel({
           <div
             style={{
               display: "flex",
-              borderRadius: 5,
+              borderRadius: 0,
               border: "1px solid var(--border)",
               overflow: "hidden",
               fontSize: 12,
@@ -458,7 +458,7 @@ function AddSkillPanel({
                     padding: "5px 14px",
                     fontSize: 12,
                     fontWeight: 500,
-                    borderRadius: 5,
+                    borderRadius: 0,
                     border: "1px solid var(--border)",
                     cursor:
                       isInstalled || isInstalling || installing !== null
@@ -602,7 +602,7 @@ export function SkillsConfig({
           height: "78vh",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: 10,
+          borderRadius: 0,
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
@@ -741,7 +741,7 @@ export function SkillsConfig({
                                 alignItems: "center",
                                 gap: 7,
                                 padding: "8px 8px",
-                                borderRadius: 5,
+                                borderRadius: 0,
                                 cursor: "pointer",
                                 background: isSelected
                                   ? "var(--bg-selected)"
@@ -813,7 +813,7 @@ export function SkillsConfig({
                   alignItems: "center",
                   gap: 6,
                   padding: "7px 8px",
-                  borderRadius: 5,
+                  borderRadius: 0,
                   cursor: "pointer",
                   background: addMode ? "var(--bg-selected)" : "none",
                   color: addMode ? "var(--accent)" : "var(--text-dim)",
@@ -897,7 +897,7 @@ export function SkillsConfig({
               padding: "6px 14px",
               background: "none",
               border: "1px solid var(--border)",
-              borderRadius: 6,
+              borderRadius: 0,
               color: "var(--text-muted)",
               cursor: "pointer",
               fontSize: 13,
