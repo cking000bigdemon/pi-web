@@ -345,7 +345,7 @@ export function ChatMinimap({ messages, streamingMessage, scrollContainer, messa
               borderRight: `1px solid ${isNearest ? color.border : "var(--border)"}`,
               borderBottom: `1px solid ${isNearest ? color.border : "var(--border)"}`,
               borderLeft: `2px solid ${color.border}`,
-              borderRadius: 4,
+              borderRadius: 0,
               padding: "2px 7px",
               width: 200,
               zIndex: 100,
