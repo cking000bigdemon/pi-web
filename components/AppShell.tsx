@@ -253,6 +253,7 @@ export function AppShell() {
             label: "Models",
             onClick: () => setModelsConfigOpen(true),
             disabled: false,
+            color: "#008A00",
             icon: (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" />
@@ -267,6 +268,7 @@ export function AppShell() {
             label: "Skills",
             onClick: () => setSkillsConfigOpen(true),
             disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
+            color: "#D80073",
             icon: (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5z" />
@@ -275,7 +277,7 @@ export function AppShell() {
               </svg>
             ),
           },
-        ] as { label: string; onClick: () => void; disabled: boolean; icon: React.ReactNode }[]).map(({ label, onClick, disabled, icon }) => (
+        ] as { label: string; onClick: () => void; disabled: boolean; icon: React.ReactNode; color: string }[]).map(({ label, onClick, disabled, icon, color }) => (
           <button
             key={label}
             onClick={onClick}
@@ -283,13 +285,14 @@ export function AppShell() {
             title={label}
             style={{
               flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              height: 32, padding: 0, background: "none", border: "none",
-              borderRadius: 0, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-              fontSize: 12, opacity: disabled ? 0.35 : 1,
-              transition: "background 0.12s, color 0.12s",
+              height: 36, padding: 0, border: "none",
+              background: disabled ? "var(--bg-panel)" : color,
+              borderRadius: 0, color: disabled ? "var(--text-dim)" : "#fff", cursor: disabled ? "default" : "pointer",
+              fontSize: 12, fontWeight: 600, opacity: disabled ? 0.5 : 1,
+              transition: "opacity 0.12s",
             }}
-            onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
+            onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.opacity = "0.88"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = disabled ? "0.5" : "1"; }}
           >
             {icon}
             {label}

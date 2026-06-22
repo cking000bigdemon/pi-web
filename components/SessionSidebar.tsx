@@ -952,7 +952,7 @@ function SessionItem({
         cursor: confirmDelete || renaming ? "default" : "pointer",
         background: confirmDelete
           ? "rgba(239,68,68,0.06)"
-          : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
+          : isSelected ? "var(--accent)" : hovered ? "var(--bg-hover)" : "transparent",
         borderLeft: confirmDelete
           ? "2px solid #ef4444"
           : isSelected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -1048,13 +1048,13 @@ function SessionItem({
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "var(--text)",
+                color: isSelected ? "#fff" : "var(--text)",
               }}
               title={title}
             >
               {title}
             </div>
-            <div style={{ marginTop: 2, display: "flex", gap: 8, color: "var(--text-dim)", fontSize: 11 }}>
+            <div style={{ marginTop: 2, display: "flex", gap: 8, color: isSelected ? "rgba(255,255,255,0.82)" : "var(--text-dim)", fontSize: 11 }}>
               <span title={session.modified}>{formatRelativeTime(session.modified)}</span>
               <span>{session.messageCount} msgs</span>
             </div>
@@ -1069,7 +1069,7 @@ function SessionItem({
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: 20, height: 20, padding: 0, flexShrink: 0,
                 background: "none", border: "none",
-                color: "var(--text-dim)", cursor: "pointer",
+                color: isSelected ? "rgba(255,255,255,0.85)" : "var(--text-dim)", cursor: "pointer",
                 transform: collapsed ? "rotate(-90deg)" : "none",
                 transition: "transform 0.15s",
               }}
