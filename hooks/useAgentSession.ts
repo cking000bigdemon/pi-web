@@ -4,6 +4,16 @@ import { useState, useCallback, useRef, useEffect, useReducer } from "react";
 import type { AgentMessage, SessionInfo, SessionTreeNode } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
+import {
+  parseSlashCommand,
+  PI_WEB_SLASH_COMMANDS,
+  isBuiltinSlashCommand,
+  localNote,
+  copyToClipboard,
+  formatSessionStats,
+  formatHelp,
+  type SessionStatsLike,
+} from "@/lib/slash-commands";
 import type { ToolEntry } from "@/components/ToolPanel";
 
 export interface SessionData {
@@ -124,6 +134,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const pendingScrollToUserRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Host-level slash command dispatcher (issue #68). Assigned to a ref so handleSend
+  // can call it without a render-order / dependency cycle (it closes over later handlers).
+  const dispatchSlashRef = useRef<(raw: string) => Promise<boolean>>(async () => false);
 
   const setNewSessionModel = opts.setNewSessionModel ?? setNewSessionModelState;
   const setToolPresetState = opts.setToolPreset ?? setToolPreset;
@@ -335,6 +348,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!message.trim() && !images?.length) return;
     if (agentRunning) return;
 
+    // Host-level slash command dispatch (issue #68): built-in commands like
+    // /compact, /reload, /model must be executed by the host, not sent to the
+    // model as chat. Extension commands (/mcp), /skill:name and prompt templates
+    // are NOT intercepted here — AgentSession.prompt() still handles those.
+    if (!images?.length) {
+      const handledSlash = await dispatchSlashRef.current(message);
+      if (handledSlash) return;
+    }
+
     const imageBlocks = images?.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType, data: img.data } }));
     const userMsg: AgentMessage = {
       role: "user",
@@ -482,6 +504,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
+    // Built-in slash commands can't be queued mid-run — don't forward them to the model.
+    if (isBuiltinSlashCommand(message)) {
+      setMessages((prev) => [...prev, localNote(`⌘ \`${message.trim()}\`：斜杠命令需在 Agent 空闲时执行，已忽略。`)]);
+      return;
+    }
     setMessages((prev) => [...prev, { role: "user", content: `[steer] ${message}`, timestamp: Date.now() } as AgentMessage]);
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
     try {
@@ -498,6 +525,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[]) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
+    // Built-in slash commands can't be queued — don't forward them to the model.
+    if (isBuiltinSlashCommand(message)) {
+      setMessages((prev) => [...prev, localNote(`⌘ \`${message.trim()}\`：斜杠命令需在 Agent 空闲时执行，已忽略。`)]);
+      return;
+    }
     setMessages((prev) => [...prev, { role: "user", content: message, timestamp: Date.now() } as AgentMessage]);
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
     try {
@@ -545,6 +577,75 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to set tools:", e);
     }
   }, [setToolPresetState]);
+
+  // Host-level slash command dispatcher (see lib/slash-commands.ts). Reassigned each
+  // render so it always closes over the latest handlers; handleSend invokes it via
+  // dispatchSlashRef. Returns true when the input was a recognized built-in command
+  // (and therefore must not be sent to the model), false to let prompt() handle it.
+  dispatchSlashRef.current = async (raw: string): Promise<boolean> => {
+    const parsed = parseSlashCommand(raw);
+    if (!parsed) return false;
+    const spec = PI_WEB_SLASH_COMMANDS[parsed.name];
+    if (!spec) return false; // not a built-in — let prompt() handle it (extension/skill/template)
+
+    const sid = sessionIdRef.current;
+    const note = (text: string) => setMessages((prev) => [...prev, localNote(text)]);
+    const needSession = (): true => {
+      note(`⌘ \`/${parsed.name}\`：当前还没有活动会话，请先发送一条消息。`);
+      return true;
+    };
+    const fail = (e: unknown) => note(`⌘ \`/${parsed.name}\` 执行失败：${e instanceof Error ? e.message : String(e)}`);
+
+    switch (parsed.name) {
+      case "compact":
+        if (!sid) return needSession();
+        handleCompact();
+        return true;
+      case "reload":
+        if (!sid) return needSession();
+        try {
+          await sendAgentCommand(sid, { type: "reload" });
+          note("⌘ `/reload`：已重新加载扩展、技能、提示词与键位配置。");
+        } catch (e) { fail(e); }
+        return true;
+      case "session":
+        if (!sid) return needSession();
+        try {
+          const stats = await sendAgentCommand<SessionStatsLike>(sid, { type: "get_session_stats" });
+          note(formatSessionStats(stats));
+        } catch (e) { fail(e); }
+        return true;
+      case "copy":
+        if (!sid) return needSession();
+        try {
+          const { text } = await sendAgentCommand<{ text: string }>(sid, { type: "get_last_assistant_text" });
+          if (!text) { note("⌘ `/copy`：暂无可复制的助手回复。"); return true; }
+          await copyToClipboard(text);
+          note("⌘ `/copy`：已复制最近一条助手回复到剪贴板。");
+        } catch (e) { fail(e); }
+        return true;
+      case "name":
+        if (!sid) return needSession();
+        if (!parsed.args) { note("⌘ `/name`：用法 `/name <会话名称>`。"); return true; }
+        try {
+          await sendAgentCommand(sid, { type: "set_session_name", name: parsed.args });
+          note(`⌘ \`/name\`：会话已命名为「${parsed.args}」。`);
+        } catch (e) { fail(e); }
+        return true;
+      case "export":
+        if (!sid) return needSession();
+        window.open(`/api/sessions/${encodeURIComponent(sid)}/export`, "_blank");
+        note("⌘ `/export`：已在新标签页触发会话 HTML 导出下载。");
+        return true;
+      case "help":
+        note(formatHelp());
+        return true;
+      default:
+        // gui / unsupported: explain the web alternative instead of messaging the model
+        note(`⌘ \`/${parsed.name}\`：${spec.hint ?? (spec.category === "gui" ? "请使用界面上的对应控件。" : "此命令在 pi-web 暂不支持。")}`);
+        return true;
+    }
+  };
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });

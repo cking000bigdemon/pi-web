@@ -22,6 +22,19 @@ export interface NavigateTreeResult {
   aborted?: boolean;
 }
 
+export interface SessionStatsResult {
+  sessionFile: string | undefined;
+  sessionId: string;
+  userMessages: number;
+  assistantMessages: number;
+  toolCalls: number;
+  toolResults: number;
+  totalMessages: number;
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  cost: number;
+  contextUsage?: ContextUsage;
+}
+
 export interface AgentSessionLike {
   readonly sessionId: string;
   readonly sessionFile: string | undefined;
@@ -51,4 +64,10 @@ export interface AgentSessionLike {
   setActiveToolsByName(names: string[]): void;
   abortCompaction(): void;
   getContextUsage(): ContextUsage | undefined;
+
+  // Host-level slash command support (issue #68)
+  reload(): Promise<void>;
+  getSessionStats(): SessionStatsResult;
+  getLastAssistantText(): string | undefined;
+  setSessionName(name: string): void;
 }

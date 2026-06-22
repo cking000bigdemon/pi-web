@@ -222,6 +222,29 @@ export class AgentSessionWrapper {
         return null;
       }
 
+      // ── Host-level slash command support (issue #68) ──
+      case "reload": {
+        // /reload — reload extensions, skills, prompts, themes, keybindings
+        await this.inner.reload();
+        return null;
+      }
+
+      case "get_session_stats": {
+        // /session — session info and stats
+        return this.inner.getSessionStats();
+      }
+
+      case "get_last_assistant_text": {
+        // /copy — last assistant message text (client writes it to the clipboard)
+        return { text: this.inner.getLastAssistantText() ?? "" };
+      }
+
+      case "set_session_name": {
+        // /name <text> — set the session display name
+        this.inner.setSessionName(command.name as string);
+        return null;
+      }
+
       default:
         throw new Error(`Unsupported command: ${type}`);
     }
