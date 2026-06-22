@@ -121,7 +121,7 @@ function TreeNode({
           height: 24,
           cursor: "pointer",
           background: hovered ? "var(--bg-hover)" : "transparent",
-          borderRadius: 4,
+          borderRadius: 0,
           userSelect: "none",
         }}
       >
@@ -176,7 +176,7 @@ function TreeNode({
               height: 20,
               background: "var(--bg-panel)",
               border: "1px solid var(--border)",
-              borderRadius: 4,
+              borderRadius: 0,
               color: "var(--accent)",
               cursor: "pointer",
               fontSize: 11,

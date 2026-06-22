@@ -55,7 +55,7 @@ function DownloadLink({ filePath, label = "Download" }: { filePath: string; labe
         color: "var(--text-muted)",
         textDecoration: "none",
         border: "1px solid var(--border)",
-        borderRadius: 5,
+        borderRadius: 0,
         padding: "2px 8px",
         fontSize: 11,
         lineHeight: 1.4,
@@ -842,7 +842,7 @@ function TextFileViewer({ filePath, cwd }: Props) {
 
         {/* Diff / Source toggle — shown only when there are changes */}
         {hasDiff && (
-          <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", borderRadius: 0, overflow: "hidden", border: "1px solid var(--border)" }}>
             <button
               onClick={() => setViewMode("source")}
               style={{
@@ -877,7 +877,7 @@ function TextFileViewer({ filePath, cwd }: Props) {
               padding: "2px 8px", fontSize: 11, cursor: "pointer",
               background: wrapLines ? "var(--bg-selected)" : "var(--bg-hover)",
               color: wrapLines ? "var(--text)" : "var(--text-muted)",
-              border: "1px solid var(--border)", borderRadius: 5,
+              border: "1px solid var(--border)", borderRadius: 0,
               fontWeight: wrapLines ? 600 : 400,
             }}
           >
@@ -887,7 +887,7 @@ function TextFileViewer({ filePath, cwd }: Props) {
 
         {/* HTML source/preview toggle */}
         {isHtml && viewMode === "source" && (
-          <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", borderRadius: 0, overflow: "hidden", border: "1px solid var(--border)" }}>
             <button
               onClick={() => setPreviewMode(false)}
               style={{
@@ -915,7 +915,7 @@ function TextFileViewer({ filePath, cwd }: Props) {
 
         {/* Markdown preview/raw toggle */}
         {isMarkdown && viewMode === "source" && (
-          <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", borderRadius: 0, overflow: "hidden", border: "1px solid var(--border)" }}>
             <button
               onClick={() => setPreviewMode(true)}
               style={{
