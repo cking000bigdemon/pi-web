@@ -16,8 +16,16 @@
 - [x] 8. ModelsConfig: Metro 弹窗; provider 彩色磁贴/列表; Save 绿对勾动画; OAuth 登录流
 - [x] 9. SkillsConfig: Metro 弹窗; project/global 分组; 启停开关; 搜 skills.sh/安装
 - [x] 10. BranchNavigator / ChatMinimap: 分支树 U/A 角色; minimap 细条
-- [ ] 11. 移动端 ≤640px: 抽屉 / 英雄 / 全屏文件; 磁贴重排
-- [ ] 12. 全屏走查 + 深浅双主题 + commit/push
+- [~] 11. ~~移动端 ≤640px~~ —— **用户决定:从任务清单移除**。(注:移动端响应式 CSS 在 iter1 已随 globals.css 完整保留,iter11 实测 375px 抽屉 overlay + Metro 配色正常工作;只是不再作为单独追踪任务做进一步打磨。)
+- [x] 12. 全屏走查 + 深浅双主题 ✓(commit 本地完成;push 待用户决定)
+
+## ✅ REDESIGN 完成(iter0–10 + 双主题走查)
+- 全部组件已 Metro 动态磁贴化并 dev 验证(真实会话/文件/弹窗截图 + console 全程零报错)。
+- **深色主题**(主):#0A0A0A 画布 + cobalt accent + 工具 teal 磁贴 + 用户 accent 块 + 统计磁贴条 + Models 绿/Skills 品红 — 真实 266 msg 会话走查通过。
+- **浅色主题**:#F2F2F2 画布 + 同套彩色磁贴 — 冷启动走查通过。
+- 功能契约 1:1 保留(会话加载/开文件/弹窗/打字/SSE 命令均正常)。
+- 本地提交 9ccd98b→(iter10);**尚未 push 到 fork / 未重打桌面安装包**(待用户)。
+- **可选 refinement(未做)**: 助手消息 panel+左4px accent 竖条容器(当前裸 markdown 配 teal 工具磁贴已很干净); 工具磁贴翻转动画(当前静态 teal 磁贴头); 选中 provider 行 accent 实心。
 
 ## 契约红线(每屏都要守住)
 命令 POST /api/agent/<id>: prompt/steer/follow_up/abort/fork/navigate_tree/set_model/set_tools/set_thinking_level/compact/abort_compaction/get_tools
