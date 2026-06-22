@@ -59,7 +59,7 @@ export function MarkdownBody({ children, className, isStreaming }: MarkdownBodyP
                 style={{
                   background: "var(--bg-selected)",
                   padding: "1px 4px",
-                  borderRadius: 3,
+                  borderRadius: 0,
                   fontFamily: "var(--font-mono)",
                   fontSize: "0.9em",
                 }}
@@ -166,7 +166,7 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
         color: isStreaming ? "var(--text-dim)" : "var(--text-muted)",
         cursor: isStreaming ? "not-allowed" : "pointer",
         fontSize: 11,
-        borderRadius: 4,
+        borderRadius: 0,
         padding: "1px 6px",
       }}
     >
@@ -196,7 +196,7 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
         position: "relative",
         marginTop: 4,
         marginBottom: 4,
-        borderRadius: 6,
+        borderRadius: 0,
         overflow: "hidden",
         border: "1px solid var(--border)",
       }}
@@ -238,7 +238,7 @@ function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; h
         position: "relative",
         marginTop: 4,
         marginBottom: 4,
-        borderRadius: 6,
+        borderRadius: 0,
         overflow: "hidden",
         border: "1px solid var(--border)",
       }}
