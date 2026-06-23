@@ -223,6 +223,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [error, setError] = useState<string | null>(null);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
+  // Recent cwds are derived from sessions; this localStorage-backed set lets the
+  // user remove stale entries from the picker without touching their sessions.
+  const [hiddenCwds, setHiddenCwds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem("pi-hidden-cwds") || "[]") as string[]); }
+    catch { return new Set(); }
+  });
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [customPathOpen, setCustomPathOpen] = useState(false);
   const [customPathValue, setCustomPathValue] = useState("");
@@ -297,10 +304,33 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         // Session not found — notify parent so it can show the placeholder
         onInitialRestoreDone?.();
       }
-      const cwds = getRecentCwds(allSessions);
+      const cwds = getRecentCwds(allSessions).filter((c) => !hiddenCwds.has(c));
       if (cwds.length > 0) setSelectedCwd(cwds[0]);
     }
-  }, [allSessions, selectedCwd, initialSessionId, onSelectSession, onInitialRestoreDone]);
+  }, [allSessions, selectedCwd, initialSessionId, onSelectSession, onInitialRestoreDone, hiddenCwds]);
+
+  const hideCwd = useCallback((cwd: string) => {
+    setHiddenCwds((prev) => {
+      const next = new Set(prev);
+      next.add(cwd);
+      try { localStorage.setItem("pi-hidden-cwds", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+  const unhideCwd = useCallback((cwd: string) => {
+    setHiddenCwds((prev) => {
+      if (!prev.has(cwd)) return prev;
+      const next = new Set(prev);
+      next.delete(cwd);
+      try { localStorage.setItem("pi-hidden-cwds", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+  // If the user explicitly switches to a cwd they'd previously removed (e.g. via
+  // "Custom path" or "Use default directory"), bring it back into the recent list.
+  useEffect(() => {
+    if (selectedCwd && hiddenCwds.has(selectedCwd)) unhideCwd(selectedCwd);
+  }, [selectedCwd, hiddenCwds, unhideCwd]);
 
   const commitCustomPath = useCallback(async () => {
     const path = customPathValue.trim();
@@ -370,7 +400,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
-  const recentCwds = getRecentCwds(allSessions);
+  const recentCwds = getRecentCwds(allSessions).filter((c) => !hiddenCwds.has(c));
   const filteredSessions = selectedCwd
     ? allSessions.filter((s) => s.cwd === selectedCwd)
     : allSessions;
@@ -513,8 +543,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               }}
             >
               {recentCwds.map((cwd) => (
-                <button
+                <div
                   key={cwd}
+                  role="button"
                   onClick={() => {
                     setSelectedCwd(cwd);
                     setCustomPathOpen(false);
@@ -529,27 +560,45 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     width: "100%",
                     padding: "8px 10px",
                     background: cwd === selectedCwd ? "var(--bg-selected)" : "none",
-                    border: "none",
                     borderBottom: "1px solid var(--border)",
                     color: cwd === selectedCwd ? "var(--text)" : "var(--text-muted)",
                     cursor: "pointer",
                     textAlign: "left",
                     fontSize: 11,
                     fontFamily: "var(--font-mono)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
                   }}
                   title={cwd}
                 >
-                  {cwd === selectedCwd && (
+                  {cwd === selectedCwd ? (
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <polyline points="1.5 5 4 7.5 8.5 2.5" />
                     </svg>
+                  ) : (
+                    <span style={{ width: 10, flexShrink: 0 }} />
                   )}
-                  {cwd !== selectedCwd && <span style={{ width: 10, flexShrink: 0 }} />}
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortenCwd(cwd, homeDir)}</span>
-                </button>
+                  {cwd !== selectedCwd && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); hideCwd(cwd); }}
+                      title="从最近列表移除（不会删除会话）"
+                      aria-label={`从最近列表移除 ${cwd}`}
+                      style={{
+                        flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 18, height: 18, padding: 0, marginLeft: 2,
+                        background: "none", border: "none", borderRadius: 0,
+                        color: "var(--text-dim)", cursor: "pointer",
+                        transition: "color 0.12s, background 0.12s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#E51400"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               ))}
 
               {/* Default cwd shortcut */}
