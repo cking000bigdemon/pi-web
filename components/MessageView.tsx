@@ -392,7 +392,7 @@ function AssistantMessageView({
 
   return (
     <div
-      style={{ marginBottom: 16, borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}
+      style={{ marginBottom: 16, borderLeft: "4px solid var(--accent)", paddingLeft: 12 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -573,6 +573,7 @@ function ThinkingBlock({ block, duration }: { block: ThinkingContent; duration?:
 
 function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const inputStr = JSON.stringify(block.input, null, 2);
 
   // Result display
@@ -581,6 +582,22 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
     : null;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
+  const isRunning = !result;
+
+  const resultLines = resultText ? resultText.split("\n") : [];
+  const firstResultLine = (resultLines.find((l) => l.trim() !== "") ?? "").trim();
+  // Live-tile flip (design screen ④): completed tiles flip on hover to peek the
+  // result summary; expanded tiles stay on the front. (Hover-flip rather than an
+  // infinite auto-loop — dozens of forever-flipping tool tiles read as noise.)
+  const canFlip = !!result && !expanded;
+  const showBack = canFlip && hovered;
+  const tileBg = isError ? "#A20025" : "#00ABA9";
+  const faceBase: React.CSSProperties = {
+    display: "flex", alignItems: "center", gap: 7,
+    width: "100%", padding: "8px 10px", boxSizing: "border-box",
+    color: "#fff", fontSize: 12, textAlign: "left", minWidth: 0,
+    background: tileBg, backfaceVisibility: "hidden",
+  };
 
   return (
     <div
@@ -592,37 +609,59 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
         background: "transparent",
       }}
     >
-      {/* ── Tool call header ── */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          width: "100%",
-          padding: "8px 10px",
-          background: isError ? "#A20025" : "#00ABA9",
-          border: "none",
-          color: "#fff",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-          minWidth: 0,
-        }}
-      >
-        <span style={{ color: "#fff", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
-          {block.toolName}
-        </span>
-        <span style={{ color: "rgba(255,255,255,0.78)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-          {getToolPreview(block)}
-        </span>
-        {duration !== undefined && (
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.78)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
-        )}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
-          <polyline points="2 3.5 5 6.5 8 3.5" />
-        </svg>
-      </button>
+      {/* ── Tool call header — 3D flip tile ── */}
+      <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ perspective: 800 }}>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          style={{
+            position: "relative",
+            display: "block",
+            width: "100%",
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            minWidth: 0,
+            transformStyle: "preserve-3d",
+            transition: "transform 0.5s cubic-bezier(0.2,0.7,0.3,1)",
+            transform: showBack ? "rotateX(180deg)" : "none",
+          }}
+        >
+          {/* FRONT */}
+          <span style={faceBase}>
+            {isRunning && (
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff", animation: "dotPulse 1.1s infinite", flexShrink: 0 }} />
+            )}
+            <span style={{ color: "#fff", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+              {block.toolName}
+            </span>
+            <span style={{ color: "rgba(255,255,255,0.78)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+              {getToolPreview(block)}
+            </span>
+            {duration !== undefined && (
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.78)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+            )}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+              <polyline points="2 3.5 5 6.5 8 3.5" />
+            </svg>
+          </span>
+          {/* BACK — result summary peek */}
+          {result && (
+            <span style={{ ...faceBase, position: "absolute", inset: 0, transform: "rotateX(180deg)" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                {isError ? "✗" : "✓"} {resultLines.length} 行
+              </span>
+              <span style={{ color: "rgba(255,255,255,0.82)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                {resultIsEmpty ? "(no output)" : firstResultLine}
+              </span>
+              {duration !== undefined && (
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.78)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+              )}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* ── Expanded: input args ── */}
       {expanded && (
