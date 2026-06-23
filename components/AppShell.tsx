@@ -27,9 +27,6 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  // Whether the open session is actively streaming — drives the session tile's live pulse.
-  const [selectedRunning, setSelectedRunning] = useState(false);
-  const handleAgentRunningChange = useCallback((running: boolean) => setSelectedRunning(running), []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 
@@ -249,7 +246,6 @@ export function AppShell() {
         onOpenFile={handleOpenFile}
         explorerRefreshKey={explorerRefreshKey}
         onAtMention={handleAtMention}
-        selectedRunning={selectedRunning}
       />
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
@@ -605,7 +601,6 @@ export function AppShell() {
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}
               onContextUsageChange={handleContextUsageChange}
-              onAgentRunningChange={handleAgentRunningChange}
             />
           ) : showPlaceholder ? (
             activeCwd ? (
