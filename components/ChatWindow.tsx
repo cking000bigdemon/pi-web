@@ -97,6 +97,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
+    isAutoModelSelection,
     agentPhase,
     isNew,
     messagesEndRef, scrollContainerRef,
@@ -180,6 +181,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       isStreaming={agentRunning}
       model={displayModelValue}
+      isAutoModelSelection={isAutoModelSelection}
       modelNames={modelNames}
       modelList={modelList}
       onModelChange={handleModelChange}
