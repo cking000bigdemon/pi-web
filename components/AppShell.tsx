@@ -868,20 +868,22 @@ export function AppShell() {
             />
           ) : showPlaceholder ? (
             activeCwd ? (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 15 }}>
-                Select a session from the sidebar
+              /* cwd selected, no session open — fork design screen ② main area: ghost-π */
+              <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, userSelect: "none", padding: 24 }}>
+                <div style={{ fontSize: "clamp(72px, 13vh, 110px)", fontWeight: 200, color: "var(--bg-selected)", lineHeight: 1, fontFamily: "var(--font-ui)" }}>π</div>
+                <div style={{ fontSize: 15, fontWeight: 300, color: "var(--text-dim)", textAlign: "center" }}>
+                  从左侧会话磁贴墙选择会话，或按 <span style={{ color: "#FA6800", fontWeight: 600 }}>＋ New</span> 开始
+                </div>
               </div>
             ) : (
-              <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none", pointerEvents: "none" }}>
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flexShrink: 0 }}>
-                  <line x1="20" y1="12" x2="4" y2="12" /><polyline points="10 6 4 12 10 18" />
-                </svg>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Get Started</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
-                    <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>Select a project directory from the sidebar<br />
-                    <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>Add models via the <strong style={{ color: "var(--text)" }}>Models</strong> button at the bottom
-                  </div>
+              /* cold start, no cwd — fork design screen ① ghost hero */
+              <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, userSelect: "none", padding: 24 }}>
+                <div style={{ fontSize: "clamp(84px, 15vh, 120px)", fontWeight: 200, color: "var(--bg-selected)", lineHeight: 1, fontFamily: "var(--font-ui)" }}>π</div>
+                <div style={{ fontSize: "clamp(28px, 5vh, 40px)", fontWeight: 200, letterSpacing: "-0.02em", color: "var(--text)", lineHeight: 1.05 }}>Pi Agent</div>
+                <div style={{ fontSize: 15, fontWeight: 300, color: "var(--text-dim)" }}>请先在左侧选择工作目录</div>
+                <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.9, textAlign: "center" }}>
+                  <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>在左侧选择一个项目目录<br />
+                  <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>通过底部 <strong style={{ color: "var(--text)" }}>Models</strong> 按钮添加模型
                 </div>
               </div>
             )

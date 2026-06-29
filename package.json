@@ -1,6 +1,6 @@
 {
   "name": "@cking000/pi-web",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Web UI for the pi coding agent",
   "license": "MIT",
   "bin": {
