@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, SlashCommandInfo } from "@/hooks/useAgentSession";
 
 export interface AttachedImage {
@@ -140,6 +140,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  // Slash palette opens above the input by default; flips below when there isn't
+  // enough room above (e.g. the empty new-session state centres the input), so its
+  // top never hides behind the top bar. Height is clamped to the available space.
+  const [slashPlacement, setSlashPlacement] = useState<"above" | "below">("above");
+  const [slashMaxHeight, setSlashMaxHeight] = useState(460);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -151,6 +156,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const lastCompositionEndAtRef = useRef(0);
   const slashCommandsRequestedRef = useRef(false);
   const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const slashAnchorRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
     insertIfEmpty(text: string) {
@@ -478,6 +484,37 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     slashItemRefs.current[slashActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [slashActiveIndex, slashMenuOpen]);
 
+  // Decide whether the slash palette opens above or below the input, and clamp its
+  // height to the room actually available — so it never overflows behind the top bar
+  // (notably in the empty new-session layout, where the input is vertically centred).
+  useLayoutEffect(() => {
+    if (!slashMenuOpen || slashQuery === null) return;
+    const measure = () => {
+      const anchor = slashAnchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      // Clamp against the chat container (below the top bar), not the raw viewport,
+      // so the palette can't tuck behind the top bar.
+      const boundary = anchor.closest("[data-slash-boundary]")?.getBoundingClientRect();
+      const topEdge = boundary ? boundary.top : 0;
+      const bottomEdge = boundary ? boundary.bottom : window.innerHeight;
+      const margin = 12;
+      const spaceAbove = rect.top - topEdge - margin;
+      const spaceBelow = bottomEdge - rect.bottom - margin;
+      const desired = Math.min(window.innerHeight * 0.56, 460);
+      if (spaceAbove < desired && spaceBelow > spaceAbove) {
+        setSlashPlacement("below");
+        setSlashMaxHeight(Math.max(160, Math.min(desired, spaceBelow)));
+      } else {
+        setSlashPlacement("above");
+        setSlashMaxHeight(Math.max(160, Math.min(desired, spaceAbove)));
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [slashMenuOpen, slashQuery, filteredSlashCommands.length]);
+
   // Build model options: prefer modelList (has provider info), fallback to modelNames
   const modelOptions: ModelOption[] = (() => {
     if (modelList && modelList.length > 0) {
@@ -617,21 +654,25 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         )}
 
         {/* Main input */}
-        <div style={{ position: "relative" }}>
+        <div ref={slashAnchorRef} style={{ position: "relative" }}>
           {slashMenuOpen && slashQuery !== null && (
             <div
               style={{
                 position: "absolute",
                 left: 0,
                 right: 0,
-                bottom: "calc(100% + 8px)",
+                ...(slashPlacement === "above"
+                  ? { bottom: "calc(100% + 8px)" }
+                  : { top: "calc(100% + 8px)" }),
                 zIndex: 120,
                 background: "var(--bg)",
                 border: "1px solid var(--border)",
                 borderRadius: 0,
-                boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
+                boxShadow: slashPlacement === "above"
+                  ? "0 -6px 20px rgba(0,0,0,0.12)"
+                  : "0 6px 20px rgba(0,0,0,0.12)",
                 overflow: "hidden",
-                maxHeight: "min(56vh, 460px)",
+                maxHeight: slashMaxHeight,
               }}
             >
               <div
@@ -649,7 +690,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <span>{slashCommandsLoading ? "Loading commands..." : `Slash commands · ${slashCommandCountLabel}`}</span>
                 <span style={{ fontFamily: "var(--font-mono)" }}>Tab / Enter</span>
               </div>
-              <div style={{ maxHeight: "calc(min(56vh, 460px) - 34px)", overflowY: "auto", padding: 10 }}>
+              <div style={{ maxHeight: slashMaxHeight - 34, overflowY: "auto", padding: 10 }}>
                 {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
                   <div style={{ padding: "2px 2px 4px", fontSize: 12, color: "var(--text-dim)" }}>
                     No extension, prompt, or skill commands found
