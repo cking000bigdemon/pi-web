@@ -297,37 +297,65 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
-          <div className="w-full max-w-[820px]">
+          <div className="flex w-full max-w-[820px] flex-col items-center">
+            {/* Hero — Metro big-π masthead (fork design screen ③) */}
             <div
-              className="mb-3"
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginLeft: 16,
-                marginRight: 52,
-                fontFamily: "var(--font-mono)",
+                fontSize: "clamp(96px, 16vh, 150px)",
+                fontWeight: 200,
+                color: "var(--accent)",
+                lineHeight: 1,
+                fontFamily: "var(--font-ui)",
+                userSelect: "none",
               }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Agent Web</span>
-                <span style={{ fontSize: 14, flex: "1 1 0", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", display: "block" }}>
-                  <Typewriter phrases={TYPEWRITER_PHRASES} />
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
-                </span>
-              </div>
+              π
             </div>
-            <NoticeShelf notices={notices} align="right" />
-            {chatInputElement}
+            <div
+              style={{
+                fontSize: "clamp(34px, 6vh, 52px)",
+                fontWeight: 200,
+                letterSpacing: "-0.03em",
+                color: "var(--text)",
+                marginTop: 6,
+                lineHeight: 1.05,
+              }}
+            >
+              Pi Agent
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 300,
+                fontFamily: "var(--font-mono)",
+                height: 26,
+                marginTop: 14,
+                marginBottom: 22,
+                minWidth: 0,
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+                maxWidth: "100%",
+              }}
+            >
+              <Typewriter phrases={TYPEWRITER_PHRASES} />
+            </div>
+            <div className="w-full">
+              <NoticeShelf notices={notices} align="right" />
+              {chatInputElement}
+            </div>
+            <div
+              style={{
+                marginTop: 14,
+                fontSize: 11,
+                color: "var(--text-dim)",
+                fontFamily: "var(--font-mono)",
+                textAlign: "center",
+              }}
+            >
+              web v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"} · pi v
+              {process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"} · Enter 发送 · Shift+Enter 换行
+            </div>
           </div>
         </div>
       ) : (
