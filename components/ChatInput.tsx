@@ -1,9 +1,7 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
-import { PI_WEB_SLASH_COMMANDS } from "@/lib/slash-commands";
-import type { SlashCommandSourceInfo } from "@/lib/types";
-import type { CompactResultInfo } from "@/hooks/useAgentSession";
+import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import type { BuiltinSlashCommandResult, CompactResultInfo, SlashCommandInfo } from "@/hooks/useAgentSession";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -22,6 +20,7 @@ interface Props {
   onAbort: () => void;
   onSteer?: (message: string, images?: AttachedImage[]) => void;
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
+  onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => void;
   isStreaming: boolean;
   model?: { provider: string; modelId: string } | null;
   isAutoModelSelection?: boolean;
@@ -40,26 +39,12 @@ interface Props {
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
+  slashCommands?: SlashCommandInfo[];
+  slashCommandsLoading?: boolean;
+  onLoadSlashCommands?: () => Promise<SlashCommandInfo[]> | SlashCommandInfo[];
+  onBuiltinCommand?: (message: string) => Promise<BuiltinSlashCommandResult>;
   soundEnabled?: boolean;
   onSoundToggle?: () => void;
-  /** Working directory for slash-command autocomplete (extension/skill commands). */
-  cwd?: string | null;
-}
-
-interface SlashItem {
-  name: string;
-  description?: string;
-  source: "builtin" | "extension" | "skill" | "prompt";
-  category?: "action" | "gui" | "unsupported";
-}
-
-function slashSourceLabel(item: SlashItem): string {
-  if (item.source === "builtin") {
-    return item.category === "gui" ? "界面" : item.category === "unsupported" ? "暂不支持" : "内置";
-  }
-  if (item.source === "extension") return "扩展";
-  if (item.source === "skill") return "技能";
-  return "模板";
 }
 
 export interface ChatInputHandle {
@@ -96,12 +81,56 @@ function formatTokenCount(tokens: number): string {
   return tokens.toLocaleString();
 }
 
+type SlashCommandPaletteItem = SlashCommandInfo | {
+  name: string;
+  description: string;
+  source: "builtin";
+};
+
+type SlashCommandSource = SlashCommandPaletteItem["source"];
+
+const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
+  { name: "compact", description: "Compress context, optionally with instructions", source: "builtin" },
+  { name: "name", description: "Set the session display name", source: "builtin" },
+  { name: "session", description: "Show session message, token, and cost stats", source: "builtin" },
+  { name: "copy", description: "Copy the last assistant message", source: "builtin" },
+];
+
+const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill"];
+
+const SLASH_SOURCE_GROUP_LABEL: Record<SlashCommandSource, string> = {
+  builtin: "Built-in",
+  extension: "Extensions",
+  prompt: "Prompts",
+  skill: "Skills",
+};
+
+const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
+  builtin: 0,
+  extension: 1,
+  prompt: 2,
+  skill: 3,
+};
+
+function slashMatchRank(command: SlashCommandPaletteItem, query: string): number {
+  const name = command.name.toLowerCase();
+  const description = command.description?.toLowerCase() ?? "";
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (name.includes(query)) return 2;
+  if (description.includes(query)) return 3;
+  return 4;
+}
+
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, onModelChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo,
-  soundEnabled, onSoundToggle, cwd,
+  slashCommands, slashCommandsLoading, onLoadSlashCommands,
+  onBuiltinCommand,
+  soundEnabled, onSoundToggle,
+  onPromptWithStreamingBehavior,
 }: Props, ref) {
   const [value, setValue] = useState("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -109,13 +138,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
-
-  // ── Slash-command autocomplete ──
-  const [serverCommands, setServerCommands] = useState<SlashCommandSourceInfo[]>([]);
-  const [slashIndex, setSlashIndex] = useState(0);
-  const [slashDismissed, setSlashDismissed] = useState(false);
-  const fetchedCwdRef = useRef<string | null | undefined>(undefined);
-  const slashItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -125,73 +149,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndAtRef = useRef(0);
-
-  // The command-name prefix while typing a slash command: "/foo" -> "foo", "/" -> "".
-  // null when the input isn't a single "/<token>" (e.g. has a space, or is prose).
-  const slashPrefix = useMemo(() => {
-    const m = value.match(/^\/(\S*)$/);
-    return m ? m[1] : null;
-  }, [value]);
-
-  const builtinItems = useMemo<SlashItem[]>(
-    () => Object.entries(PI_WEB_SLASH_COMMANDS).map(([name, spec]) => ({
-      name, description: spec.description, source: "builtin", category: spec.category,
-    })),
-    [],
-  );
-
-  // Fetch extension/skill/prompt commands for the cwd once we enter slash mode (per cwd).
-  useEffect(() => {
-    if (slashPrefix === null) return;
-    if (fetchedCwdRef.current === (cwd ?? null)) return;
-    fetchedCwdRef.current = cwd ?? null;
-    if (!cwd) { setServerCommands([]); return; }
-    let cancelled = false;
-    fetch(`/api/commands?cwd=${encodeURIComponent(cwd)}`)
-      .then((r) => r.json())
-      .then((d: { commands?: SlashCommandSourceInfo[] }) => { if (!cancelled) setServerCommands(d.commands ?? []); })
-      .catch(() => { if (!cancelled) setServerCommands([]); });
-    return () => { cancelled = true; };
-  }, [slashPrefix, cwd]);
-
-  const slashItems = useMemo<SlashItem[]>(() => {
-    if (slashPrefix === null) return [];
-    const builtinNames = new Set(builtinItems.map((i) => i.name));
-    const merged: SlashItem[] = [...builtinItems];
-    for (const c of serverCommands) if (!builtinNames.has(c.name)) merged.push({ name: c.name, description: c.description, source: c.source });
-    const p = slashPrefix.toLowerCase();
-    return merged
-      .filter((i) => i.name.toLowerCase().includes(p))
-      .sort((a, b) => {
-        const aw = a.name.toLowerCase().startsWith(p) ? 0 : 1;
-        const bw = b.name.toLowerCase().startsWith(p) ? 0 : 1;
-        return aw !== bw ? aw - bw : a.name.localeCompare(b.name);
-      });
-  }, [slashPrefix, builtinItems, serverCommands]);
-
-  const slashOpen = slashPrefix !== null && slashItems.length > 0 && !slashDismissed;
-
-  // Reset highlight + un-dismiss when the typed command text changes.
-  useEffect(() => { setSlashIndex(0); setSlashDismissed(false); }, [slashPrefix]);
-
-  // Keep the highlighted item in view.
-  useEffect(() => {
-    if (slashOpen) slashItemRefs.current[slashIndex]?.scrollIntoView({ block: "nearest" });
-  }, [slashIndex, slashOpen]);
-
-  const acceptSlash = useCallback((item: SlashItem) => {
-    const next = `/${item.name} `;
-    setValue(next);
-    setSlashDismissed(true);
-    requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(next.length, next.length);
-      ta.style.height = "auto";
-      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-    });
-  }, []);
+  const slashCommandsRequestedRef = useRef(false);
+  const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useImperativeHandle(ref, () => ({
     insertIfEmpty(text: string) {
@@ -271,21 +230,93 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     });
   }, []);
 
-  const handleSend = useCallback(() => {
-    const msg = value.trim();
-    if (!msg && !attachedImages.length) return;
-    if (isStreaming) return;
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
+  const clearInput = useCallback(() => {
     setValue("");
     clearImages();
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, attachedImages, isStreaming, onSend, clearImages]);
+  }, [clearImages]);
+
+  const handleSend = useCallback(async () => {
+    const msg = value.trim();
+    if (!msg && !attachedImages.length) return;
+    if (isStreaming) return;
+    if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
+      const result = await onBuiltinCommand(msg);
+      if (result.handled) {
+        if (!result.error) clearInput();
+        return;
+      }
+    }
+    onSend(msg, attachedImages.length ? attachedImages : undefined);
+    clearInput();
+  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput]);
+
+  const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
+    ? value.slice(1).toLowerCase()
+    : null;
+
+  const filteredSlashCommands = (() => {
+    if (slashQuery === null) return [];
+    const commands = [...(isStreaming ? [] : BUILTIN_SLASH_COMMANDS), ...(slashCommands ?? [])];
+    return [...commands]
+      .filter((command) => {
+        const name = command.name.toLowerCase();
+        const description = command.description?.toLowerCase() ?? "";
+        return name.includes(slashQuery) || description.includes(slashQuery);
+      })
+      .sort((a, b) => {
+        const rankDelta = slashMatchRank(a, slashQuery) - slashMatchRank(b, slashQuery);
+        if (rankDelta !== 0) return rankDelta;
+        return SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source]
+          || MODEL_OPTION_COLLATOR.compare(a.name, b.name);
+      });
+  })();
+
+  const groupedSlashCommands = (() => {
+    const groups = new Map<SlashCommandSource, { source: SlashCommandSource; items: { command: SlashCommandPaletteItem; index: number }[] }>();
+    for (const source of SLASH_SOURCES) {
+      groups.set(source, { source, items: [] });
+    }
+    filteredSlashCommands.forEach((command, index) => {
+      groups.get(command.source)?.items.push({ command, index });
+    });
+    return SLASH_SOURCES
+      .map((source) => groups.get(source)!)
+      .filter((group) => group.items.length > 0);
+  })();
+
+  const slashCommandCountLabel = filteredSlashCommands.length === 1
+    ? (slashQuery ? "1 match" : "1 command")
+    : `${filteredSlashCommands.length} ${slashQuery ? "matches" : "commands"}`;
+
+  const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
+    const nextValue = `/${command.name} `;
+    setValue(nextValue);
+    setSlashMenuOpen(false);
+    setSlashActiveIndex(0);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(nextValue.length, nextValue.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    });
+  }, []);
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
     const msg = value.trim();
     if (!msg && !attachedImages.length) return;
+    const streamingBehavior = mode === "steer" ? "steer" : "followUp";
+    if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
+      onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+      setValue("");
+      clearImages();
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      return;
+    }
     if (mode === "steer" && onSteer) {
       onSteer(msg, attachedImages.length ? attachedImages : undefined);
     } else if (mode === "followup" && onFollowUp) {
@@ -294,7 +325,50 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setValue("");
     clearImages();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [value, attachedImages, onSteer, onFollowUp, clearImages]);
+  }, [value, attachedImages, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearImages]);
+
+  const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
+    const lastIndex = filteredSlashCommands.length - 1;
+    if (lastIndex < 0) return 0;
+
+    if (direction === "left") return Math.max(0, slashActiveIndex - 1);
+    if (direction === "right") return Math.min(lastIndex, slashActiveIndex + 1);
+
+    const currentNode = slashItemRefs.current[slashActiveIndex];
+    if (!currentNode) {
+      return direction === "down"
+        ? Math.min(lastIndex, slashActiveIndex + 1)
+        : Math.max(0, slashActiveIndex - 1);
+    }
+
+    const currentRect = currentNode.getBoundingClientRect();
+    const currentX = currentRect.left + currentRect.width / 2;
+    const currentY = currentRect.top + currentRect.height / 2;
+    let bestIndex = -1;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index <= lastIndex; index += 1) {
+      if (index === slashActiveIndex) continue;
+      const node = slashItemRefs.current[index];
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      const candidateY = rect.top + rect.height / 2;
+      const verticalDelta = candidateY - currentY;
+      if (direction === "down" ? verticalDelta <= 4 : verticalDelta >= -4) continue;
+
+      const candidateX = rect.left + rect.width / 2;
+      const score = Math.abs(verticalDelta) * 1000 + Math.abs(candidateX - currentX);
+      if (score < bestScore) {
+        bestIndex = index;
+        bestScore = score;
+      }
+    }
+
+    if (bestIndex >= 0) return bestIndex;
+    return direction === "down"
+      ? Math.min(lastIndex, slashActiveIndex + 1)
+      : Math.max(0, slashActiveIndex - 1);
+  }, [filteredSlashCommands.length, slashActiveIndex]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -310,12 +384,37 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
 
-      // Slash-command autocomplete navigation takes precedence over send.
-      if (slashOpen && !isComposing) {
-        if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex((i) => (i + 1) % slashItems.length); return; }
-        if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex((i) => (i - 1 + slashItems.length) % slashItems.length); return; }
-        if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") { e.preventDefault(); acceptSlash(slashItems[slashIndex] ?? slashItems[0]); return; }
-        if (e.key === "Escape") { e.preventDefault(); setSlashDismissed(true); return; }
+      if (slashMenuOpen && slashQuery !== null) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("down"));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("up"));
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("right"));
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("left"));
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashMenuOpen(false);
+          return;
+        }
+        if ((e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) && filteredSlashCommands[slashActiveIndex]) {
+          e.preventDefault();
+          applySlashCommand(filteredSlashCommands[slashActiveIndex]);
+          return;
+        }
       }
 
       if (e.key === "Enter" && !e.shiftKey) {
@@ -328,7 +427,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isStreaming, onSteer, onFollowUp, sendQueued, handleSend, slashOpen, slashItems, slashIndex, acceptSlash]
+    [isStreaming, onSteer, onFollowUp, slashMenuOpen, slashQuery, filteredSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex]
   );
 
   const handleInput = useCallback(() => {
@@ -347,7 +446,37 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     processImageFiles(files);
   }, [processImageFiles]);
 
+  useEffect(() => {
+    if (slashQuery === null) {
+      setSlashMenuOpen(false);
+      setSlashActiveIndex(0);
+      slashCommandsRequestedRef.current = false;
+      return;
+    }
+    setSlashMenuOpen(true);
+    setSlashActiveIndex(0);
+    if (!slashCommandsRequestedRef.current && onLoadSlashCommands) {
+      slashCommandsRequestedRef.current = true;
+      Promise.resolve(onLoadSlashCommands()).catch(() => {
+        slashCommandsRequestedRef.current = false;
+      });
+    }
+  }, [slashQuery, onLoadSlashCommands]);
 
+  useEffect(() => {
+    if (slashActiveIndex >= filteredSlashCommands.length) {
+      setSlashActiveIndex(Math.max(0, filteredSlashCommands.length - 1));
+    }
+  }, [filteredSlashCommands.length, slashActiveIndex]);
+
+  useEffect(() => {
+    slashItemRefs.current.length = filteredSlashCommands.length;
+  }, [filteredSlashCommands.length]);
+
+  useEffect(() => {
+    if (!slashMenuOpen) return;
+    slashItemRefs.current[slashActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [slashActiveIndex, slashMenuOpen]);
 
   // Build model options: prefer modelList (has provider info), fallback to modelNames
   const modelOptions: ModelOption[] = (() => {
@@ -448,7 +577,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <div style={{
             marginBottom: 8, padding: "5px 10px",
             background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.24)",
-            borderRadius: 6, fontSize: 12, color: "rgba(5,150,105,0.95)",
+            borderRadius: 0, fontSize: 12, color: "rgba(5,150,105,0.95)",
             display: "flex", alignItems: "center", gap: 6,
           }}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -487,68 +616,152 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
 
-        {/* Main input (wrapped for slash-command autocomplete positioning) */}
+        {/* Main input */}
         <div style={{ position: "relative" }}>
-        {slashOpen && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "calc(100% + 6px)",
-              left: 0,
-              right: 0,
-              zIndex: 200,
-              background: "var(--bg)",
-              border: "1px solid var(--border)",
-              borderRadius: 0,
-              boxShadow: "0 -4px 16px rgba(0,0,0,0.12)",
-              maxHeight: 280,
-              overflowY: "auto",
-            }}
-          >
-            {slashItems.map((item, i) => (
-              <button
-                key={`${item.source}:${item.name}`}
-                ref={(el) => { slashItemRefs.current[i] = el; }}
-                onMouseDown={(e) => { e.preventDefault(); acceptSlash(item); }}
-                onMouseEnter={() => setSlashIndex(i)}
+          {slashMenuOpen && slashQuery !== null && (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: "calc(100% + 8px)",
+                zIndex: 120,
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
+                overflow: "hidden",
+                maxHeight: "min(56vh, 460px)",
+              }}
+            >
+              <div
                 style={{
+                  padding: "8px 10px",
+                  borderBottom: "1px solid var(--border)",
                   display: "flex",
-                  alignItems: "baseline",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   gap: 8,
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "6px 12px",
-                  background: i === slashIndex ? "var(--bg-selected)" : "none",
-                  border: "none",
-                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "var(--text-dim)",
                 }}
               >
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, color: i === slashIndex ? "var(--text)" : "var(--text-muted)", flexShrink: 0 }}>
-                  /{item.name}
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                  {item.description}
-                </span>
-                <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>{slashSourceLabel(item)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            background: "var(--bg-panel)",
-            border: `1px solid ${isStreaming && (onSteer || onFollowUp)
-              ? "#F0A30A"
-              : "var(--border)"}`,
-            borderRadius: 0,
-            padding: "10px 10px 10px 14px",
-            boxShadow: "none",
-            transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
-          } as React.CSSProperties}
-        >
+                <span>{slashCommandsLoading ? "Loading commands..." : `Slash commands · ${slashCommandCountLabel}`}</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>Tab / Enter</span>
+              </div>
+              <div style={{ maxHeight: "calc(min(56vh, 460px) - 34px)", overflowY: "auto", padding: 10 }}>
+                {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
+                  <div style={{ padding: "2px 2px 4px", fontSize: 12, color: "var(--text-dim)" }}>
+                    No extension, prompt, or skill commands found
+                  </div>
+                ) : (
+                  groupedSlashCommands.map((group) => (
+                    <section key={group.source} style={{ marginBottom: 12 }}>
+                      <div
+                        style={{
+                          position: "sticky",
+                          top: -10,
+                          zIndex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          padding: "4px 0 6px",
+                          background: "var(--bg)",
+                          color: "var(--text-dim)",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        <span>{SLASH_SOURCE_GROUP_LABEL[group.source]}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{group.items.length}</span>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                          gap: 8,
+                        }}
+                      >
+                        {group.items.map(({ command, index }) => {
+                          const active = index === slashActiveIndex;
+                          return (
+                            <button
+                              key={`${command.source}:${command.name}`}
+                              ref={(node) => {
+                                slashItemRefs.current[index] = node;
+                              }}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                applySlashCommand(command);
+                              }}
+                              onMouseEnter={() => setSlashActiveIndex(index)}
+                              style={{
+                                width: "100%",
+                                minWidth: 0,
+                                minHeight: 58,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 4,
+                                justifyContent: "center",
+                                padding: "9px 10px",
+                                border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                                borderRadius: 0,
+                                background: active ? "var(--bg-selected)" : "var(--bg-panel)",
+                                color: "var(--text)",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                boxShadow: active ? "0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent)" : "none",
+                              }}
+                            >
+                              <span style={{
+                                fontSize: 13,
+                                fontFamily: "var(--font-mono)",
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
+                              }}>
+                                /{command.name}
+                              </span>
+                              {command.description && (
+                                <span style={{
+                                  display: "-webkit-box",
+                                  WebkitBoxOrient: "vertical",
+                                  WebkitLineClamp: 2,
+                                  overflow: "hidden",
+                                  fontSize: 11,
+                                  lineHeight: 1.35,
+                                  color: "var(--text-dim)",
+                                }}>
+                                  {command.description}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              background: "var(--bg)",
+              border: `1px solid ${isStreaming && (onSteer || onFollowUp)
+                ? "rgba(234,179,8,0.4)"
+                : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              borderRadius: 0,
+              padding: "10px 10px 10px 14px",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
+              transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
+            } as React.CSSProperties}
+          >
           <textarea
             ref={textareaRef}
             value={value}
@@ -567,7 +780,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               isStreaming && (onSteer || onFollowUp)
                 ? "Steer 立即注入 / Follow-up 排队…"
                 : isStreaming ? "Agent is running…"
-                : "Message…"
+                : "Message… Type / for commands"
             }
             rows={1}
             style={{
@@ -597,7 +810,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
                     background: (value.trim() || attachedImages.length) ? "#F0A30A" : "var(--bg-panel)",
-                    border: "none",
+                    border: "1px solid var(--border)",
                     borderRadius: 0,
                     color: (value.trim() || attachedImages.length) ? "#1a1a1a" : "var(--text-dim)",
                     cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
@@ -620,7 +833,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
                     background: (value.trim() || attachedImages.length) ? "#647687" : "var(--bg-panel)",
-                    border: "none",
+                    border: "1px solid var(--border)",
                     borderRadius: 0,
                     color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
                     cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
@@ -664,7 +877,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               Send
             </button>
           )}
-        </div>
+          </div>
         </div>
 
         {/* Bottom bar: left | center (context) | right */}
@@ -1034,17 +1247,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 14px",
                   height: 32,
-                  background: "#E51400",
-                  border: "none",
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.3)",
                   borderRadius: 0,
-                  color: "#fff",
+                  color: "#ef4444",
                   cursor: "pointer",
                   fontSize: 12, fontWeight: 600,
                   whiteSpace: "nowrap", letterSpacing: "-0.01em",
-                  transition: "opacity 0.12s",
+                  transition: "background 0.12s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.88"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.16)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                   <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />

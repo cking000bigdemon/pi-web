@@ -94,6 +94,94 @@ export interface CustomMessage {
 
 export type AgentMessage = UserMessage | AssistantMessage | ToolResultMessage | CustomMessage;
 
+export type ExtensionUiRequest =
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "select";
+      title: string;
+      options: string[];
+      timeout?: number;
+      expiresAt?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "confirm";
+      title: string;
+      message: string;
+      timeout?: number;
+      expiresAt?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "input";
+      title: string;
+      placeholder?: string;
+      timeout?: number;
+      expiresAt?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "editor";
+      title: string;
+      prefill?: string;
+      timeout?: number;
+      expiresAt?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "notify";
+      message: string;
+      notifyType?: "info" | "warning" | "error";
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "setStatus";
+      statusKey: string;
+      statusText?: string;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "setWidget";
+      widgetKey: string;
+      widgetLines?: string[];
+      widgetPlacement?: "aboveEditor" | "belowEditor";
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "setTitle";
+      title: string;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "set_editor_text";
+      text: string;
+    };
+
+export type ExtensionUiResponse =
+  | { type: "extension_ui_response"; id: string; value: string }
+  | { type: "extension_ui_response"; id: string; confirmed: boolean }
+  | { type: "extension_ui_response"; id: string; cancelled: true };
+
+export interface ExtensionStatusItem {
+  key: string;
+  text: string;
+}
+
+export interface ExtensionWidgetItem {
+  key: string;
+  lines: string[];
+  placement: "aboveEditor" | "belowEditor";
+}
+
 export interface SessionMessageEntry extends SessionEntryBase {
   type: "message";
   message: AgentMessage;
@@ -189,49 +277,6 @@ export interface SessionContext {
   entryIds: string[]; // parallel to messages — the session entry id for each message
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
-}
-
-// Extension UI bridge (issue #68 follow-up): server-side extension/package commands
-// call ctx.ui.* which is bridged to the browser over the SSE event stream.
-export interface ExtensionUiDialog {
-  id: string;
-  method: "select" | "confirm" | "input" | "editor";
-  title: string;
-  message?: string;       // confirm
-  options?: string[];     // select
-  placeholder?: string;   // input
-  prefill?: string;       // editor
-  timeout?: number;       // optional auto-dismiss countdown (ms)
-}
-
-export interface ExtensionUiWidget {
-  key: string;
-  lines: string[];
-  placement: "aboveEditor" | "belowEditor";
-}
-
-export interface ExtensionUiStatus {
-  key: string;
-  text: string;
-}
-
-export interface ExtensionUiToast {
-  id: string;
-  message: string;
-  type: "info" | "warning" | "error";
-}
-
-export type ExtensionUiResponse =
-  | { cancelled: true }
-  | { value: string }
-  | { confirmed: boolean };
-
-// Slash-command autocomplete: extension/skill/prompt commands discovered for a cwd
-// (built-in commands live client-side in lib/slash-commands.ts and are merged in).
-export interface SlashCommandSourceInfo {
-  name: string;        // command name without leading slash; skills are already "skill:<name>"
-  description?: string;
-  source: "extension" | "skill" | "prompt";
 }
 
 // RPC types
