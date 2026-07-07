@@ -8,37 +8,24 @@ import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
+import { PluginsConfig } from "./PluginsConfig";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { copyText } from "@/lib/clipboard";
+import { getFileName } from "@/lib/file-paths";
+import { buildAtMentionText } from "@/lib/file-fuzzy";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 
 type SessionCopyField = "file" | "id";
 
-function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    return Promise.resolve();
-  } catch {
-    return Promise.reject();
-  }
-}
-
 export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isDark, toggleTheme } = useTheme();
+  const isMobile = useIsMobile();
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   // When user clicks +, we only store the cwd — no fake session id
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
@@ -48,7 +35,17 @@ export function AppShell() {
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
+  const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
+  // On mobile the sidebar is an overlay drawer; hide it by default so the chat
+  // is visible on load. Runs once the breakpoint resolves after hydration.
+  useEffect(() => {
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+  useEffect(() => {
+    setMobileSidebarReady(true);
+  }, []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 
@@ -106,12 +103,19 @@ export function AppShell() {
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const toggleTopPanel = useCallback((panel: "branches" | "system" | "session") => {
+    if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
-  }, []);
+  }, [isMobile]);
 
   const openSessionStatsPanel = useCallback(() => {
+    if (isMobile) setSidebarOpen(false);
     setActiveTopPanel("session");
-  }, []);
+  }, [isMobile]);
+
+  const handleSidebarToggle = useCallback(() => {
+    if (isMobile) setActiveTopPanel(null);
+    setSidebarOpen((open) => !open);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
@@ -130,8 +134,10 @@ export function AppShell() {
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
-  const handleAtMention = useCallback((relativePath: string) => {
-    chatInputRef.current?.insertText("`" + relativePath + "`");
+  // Same @mention format as the chat input's @ autocomplete, so the agent's
+  // read tool resolves it the same way (it strips the @ prefix).
+  const handleAtMention = useCallback((relativePath: string, isDir: boolean) => {
+    chatInputRef.current?.insertText(buildAtMentionText(relativePath, isDir));
   }, []);
 
   const [initialSessionId] = useState<string | null>(() => searchParams.get("session"));
@@ -141,7 +147,7 @@ export function AppShell() {
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
 
-  const handleCwdChange = useCallback((cwd: string | null) => {
+  const handleCwdChange = useCallback((cwd: string | null, projectRoot?: string | null) => {
     setActiveCwd(cwd);
     // Skip if cwd is null (initial mount) or during the initial URL restore.
     if (!cwd) return;
@@ -149,12 +155,16 @@ export function AppShell() {
       suppressCwdBumpRef.current = false;
       return;
     }
-    // Close any session that belongs to a different cwd — it no longer
+    // Worktrees of one repo share a project root. Moving the effective cwd
+    // within the same project (e.g. switching worktree, or clicking a session
+    // that lives in another worktree) must not close the open session.
+    const newProject = projectRoot ?? cwd;
+    if (selectedSession && (selectedSession.projectRoot ?? selectedSession.cwd) === newProject) {
+      return;
+    }
+    // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
-    setSelectedSession((prev) => {
-      if (prev && prev.cwd !== cwd) return null;
-      return prev;
-    });
+    setSelectedSession(null);
     setNewSessionCwd((prev) => {
       if (prev && prev !== cwd) return null;
       return prev;
@@ -165,7 +175,7 @@ export function AppShell() {
     setSystemPrompt(null);
     setActiveTopPanel(null);
     router.replace("/", { scroll: false });
-  }, [router]);
+  }, [router, selectedSession]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
@@ -173,6 +183,8 @@ export function AppShell() {
     setSessionKey((k) => k + 1);
     setSystemPrompt(null);
     setInitialSessionRestored(true);
+    // On mobile, collapse the overlay drawer so the chat is revealed after pick.
+    if (isMobile && !isRestore) setSidebarOpen(false);
     if (isRestore) {
       // Suppress the redundant sessionKey bump that would come from the
       // onCwdChange effect firing after setSelectedCwd in the sidebar
@@ -183,7 +195,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [router]);
+  }, [router, isMobile]);
 
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
@@ -193,16 +205,33 @@ export function AppShell() {
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
     setActiveTopPanel(null);
+    if (isMobile) setSidebarOpen(false);
     router.replace("/", { scroll: false });
-  }, [router]);
+  }, [router, isMobile]);
+
+  // Client-built transient SessionInfo (new session / fork) lacks the
+  // server-computed projectRoot, which the same-project check in
+  // handleCwdChange relies on. Hydrate it from the session list so switching
+  // worktrees right after creating a session doesn't close the chat.
+  const hydrateSelectedSession = useCallback((sessionId: string) => {
+    void fetch("/api/sessions")
+      .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
+      .then((d) => {
+        const full = d?.sessions.find((s) => s.id === sessionId);
+        if (!full) return;
+        setSelectedSession((prev) => (prev && prev.id === sessionId && !prev.projectRoot ? full : prev));
+      })
+      .catch(() => {});
+  }, []);
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo) => {
     setNewSessionCwd(null);
     setSelectedSession(session);
     setRefreshKey((k) => k + 1);
+    hydrateSelectedSession(session.id);
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router]);
+  }, [router, hydrateSelectedSession]);
 
   const handleAgentEnd = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -217,8 +246,9 @@ export function AppShell() {
       ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
     }));
+    hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [router]);
+  }, [router, hydrateSelectedSession]);
 
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -239,15 +269,23 @@ export function AppShell() {
     }
   }, [selectedSession, router]);
 
-  const handleOpenFile = useCallback((filePath: string, fileName: string) => {
+  const handleOpenFile = useCallback((filePath: string, fileName: string, sourceSessionId?: string | null) => {
     const tabId = `file:${filePath}`;
     setFileTabs((prev) => {
-      if (prev.find((t) => t.id === tabId)) return prev;
-      return [...prev, { id: tabId, label: fileName, filePath }];
+      const existing = prev.find((t) => t.id === tabId);
+      if (!existing) return [...prev, { id: tabId, label: fileName, filePath, sourceSessionId }];
+      if (!sourceSessionId || existing.sourceSessionId === sourceSessionId) return prev;
+      return prev.map((t) => t.id === tabId ? { ...t, sourceSessionId } : t);
     });
     setActiveFileTabId(tabId);
     setRightPanelOpen(true);
-  }, []);
+    // On mobile the file panel is full-screen; close the drawer so it shows.
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
+  const handleOpenLinkedFile = useCallback((filePath: string) => {
+    handleOpenFile(filePath, getFileName(filePath), selectedSession?.id ?? null);
+  }, [handleOpenFile, selectedSession?.id]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
     setFileTabs((prev) => {
@@ -318,6 +356,20 @@ export function AppShell() {
                 <path d="M12 2L2 7l10 5 10-5-10-5z" />
                 <path d="M2 17l10 5 10-5" />
                 <path d="M2 12l10 5 10-5" />
+              </svg>
+            ),
+          },
+          {
+            label: "Plugins",
+            onClick: () => setPluginsConfigOpen(true),
+            disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
+            color: "#1BA1E2",
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 7V2" />
+                <path d="M15 7V2" />
+                <path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0Z" />
+                <path d="M12 19v3" />
               </svg>
             ),
           },
@@ -408,11 +460,21 @@ export function AppShell() {
           animation: none;
         }
       }
+      @media (max-width: 640px) {
+        .sidebar-overlay-backdrop.sidebar-mobile-pending {
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+        .sidebar-container.sidebar-mobile-pending.sidebar-open {
+          transform: translateX(-100%);
+          box-shadow: none;
+        }
+      }
     `}</style>
     <div style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "var(--bg)" }}>
       {/* Mobile overlay backdrop */}
       <div
-        className="sidebar-overlay-backdrop"
+        className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
         onClick={() => setSidebarOpen(false)}
         style={{
           position: "fixed",
@@ -427,7 +489,7 @@ export function AppShell() {
 
       {/* Left sidebar */}
       <div
-        className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}`}
+        className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
         style={{
           background: "var(--bg-panel)",
           borderRight: "1px solid var(--border)",
@@ -445,8 +507,9 @@ export function AppShell() {
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: 36, background: "var(--bg-panel)" }}>
           <button
-            onClick={() => setSidebarOpen((v) => !v)}
+            onClick={handleSidebarToggle}
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: 36, height: 36, padding: 0,
@@ -549,13 +612,14 @@ export function AppShell() {
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </span>
-                <span>Export</span>
+                {!isMobile && <span>Export</span>}
               </button>
               <BranchNavigator
                 tree={branchTree}
                 activeLeafId={branchActiveLeafId}
                 onLeafChange={handleBranchLeafChange}
                 inline
+                compact={isMobile}
                 containerRef={topBarRef}
                 open={activeTopPanel === "branches"}
                 onToggle={() => toggleTopPanel("branches")}
@@ -564,6 +628,9 @@ export function AppShell() {
               <button
                 ref={systemBtnRef}
                 onClick={() => toggleTopPanel("system")}
+                title="System prompt"
+                aria-label="System prompt"
+                aria-pressed={activeTopPanel === "system"}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   height: "100%", padding: "0 12px",
@@ -584,7 +651,7 @@ export function AppShell() {
                   <line x1="8" y1="13" x2="16" y2="13" />
                   <line x1="8" y1="17" x2="13" y2="17" />
                 </svg>
-                <span>System</span>
+                {!isMobile && <span>System</span>}
               </button>
             </div>
           )}
@@ -631,6 +698,8 @@ export function AppShell() {
                 type="button"
                 onClick={() => toggleTopPanel("session")}
                 title={tooltip || "Session info"}
+                aria-label="Session info"
+                aria-pressed={activeTopPanel === "session"}
                 style={{
                   marginLeft: "auto",
                   display: "flex", alignItems: "center", gap: 3,
@@ -645,10 +714,15 @@ export function AppShell() {
                   transition: "background 0.1s",
                 }}
               >
-                {t && t.input > 0 && statTile("in", fmt(t.input), "#647687")}
-                {t && t.output > 0 && statTile("out", fmt(t.output), "#647687")}
-                {t && t.cacheRead > 0 && statTile("cache", fmt(t.cacheRead), "#647687")}
-                {costStr && statTile("cost", costStr, "#60A917")}
+                {isMobile && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                )}
+                {!isMobile && t && t.input > 0 && statTile("in", fmt(t.input), "#647687")}
+                {!isMobile && t && t.output > 0 && statTile("out", fmt(t.output), "#647687")}
+                {!isMobile && t && t.cacheRead > 0 && statTile("cache", fmt(t.cacheRead), "#647687")}
+                {!isMobile && costStr && statTile("cost", costStr, "#60A917")}
                 {ctxStr && statTile("ctx", ctxStr, ctxColor)}
               </button>
             );
@@ -660,6 +734,8 @@ export function AppShell() {
               top: topPanelPos.top,
               left: topPanelPos.left,
               width: topPanelPos.width,
+              maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
+              overflowY: "auto",
               zIndex: 500,
             }}>
               {activeTopPanel === "system" && (
@@ -825,8 +901,10 @@ export function AppShell() {
                     return (
                       <div style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(360px, 1.7fr) minmax(140px, 0.55fr) minmax(190px, 0.75fr)",
-                        gap: 24,
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "minmax(360px, 1.7fr) minmax(140px, 0.55fr) minmax(190px, 0.75fr)",
+                        gap: isMobile ? 16 : 24,
                         fontSize: 12,
                         lineHeight: 1.5,
                         fontFamily: "var(--font-mono)",
@@ -865,6 +943,7 @@ export function AppShell() {
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
+              onOpenFile={handleOpenLinkedFile}
             />
           ) : showPlaceholder ? (
             activeCwd ? (
@@ -917,7 +996,11 @@ export function AppShell() {
         {/* File content */}
         <div style={{ flex: 1, overflow: "hidden" }}>
           {activeFileTab?.filePath ? (
-            <FileViewer filePath={activeFileTab.filePath} cwd={activeCwd ?? undefined} />
+            <FileViewer
+              filePath={activeFileTab.filePath}
+              cwd={activeCwd ?? undefined}
+              sourceSessionId={activeFileTab.sourceSessionId}
+            />
           ) : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
               No file open
@@ -930,6 +1013,7 @@ export function AppShell() {
     <button
       onClick={() => setRightPanelOpen((v) => !v)}
       title={rightPanelOpen ? "Hide file panel" : "Show file panel"}
+      aria-label={rightPanelOpen ? "Hide file panel" : "Show file panel"}
       style={{
         position: "fixed", top: 0, right: 0, zIndex: 300,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -948,6 +1032,14 @@ export function AppShell() {
     {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
     {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />
+    )}
+    {pluginsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+      <PluginsConfig
+        cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
+        sessionId={selectedSession?.id ?? null}
+        onClose={() => setPluginsConfigOpen(false)}
+        onReloaded={() => setSessionKey((k) => k + 1)}
+      />
     )}
     </>
   );

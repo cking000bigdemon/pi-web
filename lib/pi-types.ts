@@ -128,6 +128,8 @@ export interface AgentSessionLike {
   readonly promptTemplates: readonly PromptTemplateLike[];
   readonly resourceLoader: ResourceLoaderLike;
 
+  readonly bindExtensions?: unknown;
+  reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
   subscribe(listener: (event: AgentSessionEvent) => void): () => void;
   prompt(text: string, options?: {
     images?: Array<{ type: "image"; data: string; mimeType: string }>;
@@ -146,6 +148,10 @@ export interface AgentSessionLike {
   setAutoRetryEnabled(enabled: boolean): void;
   steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
   followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
+  readonly pendingMessageCount: number;
+  getSteeringMessages(): readonly string[];
+  getFollowUpMessages(): readonly string[];
+  clearQueue(): { steering: string[]; followUp: string[] };
   getAllTools(): ToolInfo[];
   getActiveToolNames(): string[];
   setActiveToolsByName(names: string[]): void;

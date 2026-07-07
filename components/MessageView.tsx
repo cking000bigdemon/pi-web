@@ -2,6 +2,10 @@
 
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from "react";
 import { MarkdownBody } from "./MarkdownBody";
+import { copyText } from "@/lib/clipboard";
+import { parseCompactionSummary } from "@/lib/compaction-summary";
+import { isEmptyThinkingBlock } from "@/lib/message-display";
+import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import type {
   AgentMessage,
   UserMessage,
@@ -20,6 +24,8 @@ interface Props {
   isStreaming?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
   entryId?: string;
   onFork?: (entryId: string) => void;
   forking?: boolean;
@@ -43,44 +49,30 @@ function formatTime(ts?: number): string | null {
   return `${date} ${time}`;
 }
 
-function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    return Promise.resolve();
-  } catch {
-    return Promise.reject();
-  }
-}
-
-export function MessageView({ message, isStreaming, toolResults, modelNames, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp }: Props) {
+export function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp }: Props) {
   if (message.role === "user") {
-    return <UserMessageView message={message as UserMessage} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
+    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
     return null;
   }
   if (message.role === "custom") {
-    return <CustomMessageView message={message as CustomMessage} />;
+    if ((message as CustomMessage).customType === "compaction") {
+      return <CompactionMessageView message={message as CustomMessage} />;
+    }
+    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   return null;
 }
 
-function UserMessageView({ message, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
+function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
   entryId?: string;
   onFork?: (entryId: string) => void;
   forking?: boolean;
@@ -161,7 +153,7 @@ function UserMessageView({ message, entryId, onFork, forking, onNavigate, prevAs
               })}
             </div>
           )}
-          {content && <MarkdownBody className="markdown-user-message">{content}</MarkdownBody>}
+          {content && <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>}
         </div>
 
       </div>
@@ -282,6 +274,8 @@ function AssistantMessageView({
   isStreaming,
   toolResults,
   modelNames,
+  cwd,
+  onOpenFile,
   showTimestamp,
   prevTimestamp,
 }: {
@@ -289,17 +283,22 @@ function AssistantMessageView({
   isStreaming?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
   showTimestamp?: boolean;
   prevTimestamp?: number;
 }) {
   const time = showTimestamp ? formatTime(message.timestamp) : null;
-  const blocks = message.content ?? [];
+  const blockItems = (message.content ?? [])
+    .map((block, originalIndex) => ({ block, originalIndex }))
+    .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming }));
+  const blocks = blockItems.map(({ block }) => block);
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const streamStartRef = useRef<number | null>(null);
   const [tps, setTps] = useState<number | null>(null);
-  const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
+  const blockItemsRef = useRef(blockItems);
+  blockItemsRef.current = blockItems;
 
   // Streaming-based timing for thinking blocks
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
@@ -343,7 +342,7 @@ function AssistantMessageView({
   useEffect(() => {
     if (!isStreaming) {
       // Finalise any un-finished thinking block durations on stream end
-      const now = Date.now();
+      const now = new Date().getTime();
       setStreamingDurations((prev: Map<number, number>) => {
         const next = new Map(prev);
         for (const [idx, start] of blockStartTimesRef.current) {
@@ -356,23 +355,26 @@ function AssistantMessageView({
       return;
     }
     const tick = () => {
-      const bs = blocksRef.current;
+      const items = blockItemsRef.current;
+      const bs = items.map(({ block }) => block);
       const now = Date.now();
 
       // Record start time for each block the first time we see it
-      bs.forEach((_, i) => {
-        if (!blockStartTimesRef.current.has(i)) blockStartTimesRef.current.set(i, now);
+      items.forEach(({ originalIndex }) => {
+        if (!blockStartTimesRef.current.has(originalIndex)) blockStartTimesRef.current.set(originalIndex, now);
       });
 
       // When a non-last block has a successor already started, finalise its duration
       setStreamingDurations((prev: Map<number, number>) => {
         let changed = false;
         const next = new Map(prev);
-        for (let i = 0; i < bs.length - 1; i++) {
-          if (!next.has(i) && blockStartTimesRef.current.has(i)) {
-            const start = blockStartTimesRef.current.get(i)!;
-            const nextStart = blockStartTimesRef.current.get(i + 1) ?? now;
-            next.set(i, Math.round((nextStart - start) / 1000));
+        for (let i = 0; i < items.length - 1; i++) {
+          const originalIndex = items[i].originalIndex;
+          const nextOriginalIndex = items[i + 1].originalIndex;
+          if (!next.has(originalIndex) && blockStartTimesRef.current.has(originalIndex)) {
+            const start = blockStartTimesRef.current.get(originalIndex)!;
+            const nextStart = blockStartTimesRef.current.get(nextOriginalIndex) ?? now;
+            next.set(originalIndex, Math.round((nextStart - start) / 1000));
             changed = true;
           }
         }
@@ -393,6 +395,8 @@ function AssistantMessageView({
     const id = setInterval(tick, 300);
     return () => clearInterval(id);
   }, [isStreaming]);
+
+  if (blocks.length === 0 && !isStreaming) return null;
 
   return (
     <div
@@ -426,7 +430,7 @@ function AssistantMessageView({
             <>
 
               {est > 0 && (
-                <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)" }} title="预估 token 数（流式接收中）">
+                <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)" }} title="Estimated token count while streaming">
                   <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 400 }}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
@@ -449,8 +453,8 @@ function AssistantMessageView({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {blocks.map((block, i) => (
-          <BlockView key={i} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(i) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} />
+        {blockItems.map(({ block, originalIndex }) => (
+          <BlockView key={originalIndex} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} />
         ))}
       </div>
 
@@ -503,9 +507,9 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number> }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   if (block.type === "text") {
-    return <TextBlock block={block as TextContent} isStreaming={isStreaming} />;
+    return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
     return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} />;
@@ -519,8 +523,8 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
   return null;
 }
 
-function TextBlock({ block, isStreaming }: { block: TextContent; isStreaming?: boolean }) {
-  return <MarkdownBody isStreaming={isStreaming}>{block.text}</MarkdownBody>;
+function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+  return <MarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</MarkdownBody>;
 }
 
 function ThinkingBlock({ block, duration }: { block: ThinkingContent; duration?: number }) {
@@ -579,6 +583,8 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
   const inputStr = JSON.stringify(block.input, null, 2);
+  const isEditTool = isEditToolName(block.toolName);
+  const resultDiff = result && !result.isError ? getResultDiff(result) : null;
 
   // Result display
   const resultText = result
@@ -667,7 +673,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
       </div>
 
       {/* ── Expanded: input args ── */}
-      {expanded && (
+      {expanded && !isEditTool && (
         <pre
           style={{
             margin: 0,
@@ -688,14 +694,265 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
 
       {/* ── Paired result — only shown when expanded ── */}
       {expanded && result && (
-        <PairedResult
-          text={resultText ?? ""}
-          isEmpty={resultIsEmpty}
-          isError={isError}
-        />
+        resultDiff ? (
+          <PairedDiffResult
+            diff={resultDiff}
+          />
+        ) : (
+          <PairedResult
+            text={resultText ?? ""}
+            isEmpty={resultIsEmpty}
+            isError={isError}
+          />
+        )
       )}
     </div>
   );
+}
+
+interface ResultDiff {
+  text: string;
+}
+
+function PairedDiffResult({ diff }: {
+  diff: ResultDiff;
+}) {
+  return (
+    <div
+      style={{
+        borderTop: "1px solid rgba(34,197,94,0.15)",
+        background: "var(--bg)",
+      }}
+    >
+      <SplitPatchView text={diff.text} />
+    </div>
+  );
+}
+
+function SplitPatchView({ text }: { text: string }) {
+  const files = useMemo(() => parseUnifiedPatch(text), [text]);
+  if (!files) return <PatchTextView text={text} />;
+  const showFileHeaders = files.length > 1;
+
+  return (
+    <div style={{ maxHeight: 560, overflowY: "auto", overflowX: "hidden", background: "var(--bg)" }}>
+      {files.map((file, fileIndex) => (
+        <div
+          key={fileIndex}
+          style={{
+            minWidth: 0,
+            borderTop: fileIndex === 0 ? "none" : "1px solid var(--border)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            lineHeight: 1.55,
+          }}
+        >
+          {showFileHeaders && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                position: "sticky",
+                top: 0,
+                zIndex: 1,
+                background: "var(--bg-panel)",
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <SplitDiffHeader title={file.oldPath || "Before"} side="left" />
+              <SplitDiffHeader title={file.newPath || "After"} side="right" />
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
+            {file.rows.map((row, rowIndex) => {
+              if (row.type === "hunk") {
+                return null;
+              }
+
+              return (
+                <div key={rowIndex} style={{ display: "contents" }}>
+                  <SplitDiffCellView cell={row.left} side="left" />
+                  <SplitDiffCellView cell={row.right} side="right" />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SplitDiffHeader({ title, side }: { title: string; side: "left" | "right" }) {
+  return (
+    <div
+      title={title}
+      style={{
+        padding: "5px 10px",
+        color: "var(--text-dim)",
+        borderRight: side === "left" ? "1px solid var(--border)" : "none",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {title}
+    </div>
+  );
+}
+
+function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" | "right" }) {
+  const bg =
+    cell.type === "added"
+      ? "rgba(34,197,94,0.12)"
+      : cell.type === "removed"
+      ? "rgba(248,113,113,0.13)"
+      : cell.type === "empty"
+      ? "var(--bg-subtle)"
+      : "transparent";
+  const marker =
+    cell.type === "added" ? "+" : cell.type === "removed" ? "-" : " ";
+  const markerColor =
+    cell.type === "added" ? "#22c55e" : cell.type === "removed" ? "#f87171" : "var(--text-dim)";
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        minWidth: 0,
+        background: bg,
+        borderRight: side === "left" ? "1px solid var(--border)" : "none",
+      }}
+    >
+      <span
+        style={{
+          width: 42,
+          padding: "0 6px",
+          textAlign: "right",
+          color: "var(--text-dim)",
+          userSelect: "none",
+          background: "var(--bg-panel)",
+          borderRight: "1px solid var(--border)",
+          flexShrink: 0,
+        }}
+      >
+        {cell.lineNo ?? ""}
+      </span>
+      <span
+        style={{
+          width: 18,
+          padding: "0 5px",
+          color: markerColor,
+          userSelect: "none",
+          fontWeight: cell.type === "context" || cell.type === "empty" ? 400 : 700,
+          flexShrink: 0,
+        }}
+      >
+        {marker}
+      </span>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: "0 10px 0 0",
+          color: cell.type === "empty" ? "var(--text-dim)" : "var(--text)",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+        }}
+      >
+        {cell.text || "\u00a0"}
+      </span>
+    </div>
+  );
+}
+
+function PatchTextView({ text }: { text: string }) {
+  const lines = text.split(/\r?\n/);
+
+  return (
+    <div style={{ maxHeight: 520, overflowY: "auto", overflowX: "hidden", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.55, minWidth: 0 }}>
+      {lines.map((line, i) => {
+        const kind =
+          line.startsWith("@@") ? "hunk" :
+          line.startsWith("+") && !line.startsWith("+++") ? "added" :
+          line.startsWith("-") && !line.startsWith("---") ? "removed" :
+          "context";
+        const bg =
+          kind === "added" ? "rgba(34,197,94,0.12)" :
+          kind === "removed" ? "rgba(248,113,113,0.13)" :
+          kind === "hunk" ? "rgba(96,165,250,0.12)" :
+          "transparent";
+        const color =
+          kind === "added" ? "#22c55e" :
+          kind === "removed" ? "#f87171" :
+          kind === "hunk" ? "var(--accent)" :
+          "var(--text)";
+
+        return (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              background: bg,
+              borderLeft: kind === "added"
+                ? "3px solid #22c55e"
+                : kind === "removed"
+                ? "3px solid #f87171"
+                : kind === "hunk"
+                ? "3px solid var(--accent)"
+                : "3px solid transparent",
+            }}
+          >
+            <span
+              style={{
+                width: 48,
+                padding: "0 8px",
+                color: "var(--text-dim)",
+                background: "var(--bg-panel)",
+                borderRight: "1px solid var(--border)",
+                textAlign: "right",
+                userSelect: "none",
+                flexShrink: 0,
+              }}
+            >
+              {i + 1}
+            </span>
+            <span style={{ padding: "0 10px", whiteSpace: "pre-wrap", overflowWrap: "anywhere", color }}>
+              {line || "\u00a0"}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function getResultDiff(result: ToolResultMessage): ResultDiff | null {
+  const details = (result as ToolResultMessage & { details?: unknown }).details;
+  if (!isRecord(details)) return null;
+
+  const patch = typeof details.patch === "string" ? details.patch : null;
+  if (patch) return { text: patch };
+
+  const diff = typeof details.diff === "string" ? details.diff : null;
+  if (diff) return { text: diff };
+
+  return null;
+}
+
+function isEditToolName(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === "edit" ||
+    name.startsWith("edit_") ||
+    name.endsWith(".edit") ||
+    name.endsWith("_edit") ||
+    name.includes("str_replace") ||
+    name.includes("replace_editor");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function PairedResult({ text, isEmpty, isError }: {
@@ -732,7 +989,88 @@ function PairedResult({ text, isEmpty, isError }: {
   );
 }
 
-function CustomMessageView({ message }: { message: CustomMessage }) {
+function CompactionMessageView({ message }: { message: CustomMessage }) {
+  const summary = getMessageText(message.content);
+  const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
+  const time = formatTime(message.timestamp);
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          overflow: "hidden",
+          background: "var(--bg)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 10px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--bg-panel)",
+            color: "var(--text-muted)",
+          }}
+        >
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
+            compaction
+          </span>
+          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+        </div>
+
+        <div style={{ padding: "11px 13px 12px" }}>
+          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
+            Conversation compacted
+          </div>
+          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
+            The conversation history before this point was compacted into the following summary:
+          </div>
+          {parsedSummary.body ? (
+            <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
+          ) : (
+            <span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no summary)</span>
+          )}
+          <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactionFileMetadata({ readFiles, modifiedFiles }: { readFiles: string[]; modifiedFiles: string[] }) {
+  const total = readFiles.length + modifiedFiles.length;
+  if (total === 0) return null;
+
+  const parts = [];
+  if (readFiles.length > 0) parts.push(`${readFiles.length} read`);
+  if (modifiedFiles.length > 0) parts.push(`${modifiedFiles.length} modified`);
+
+  return (
+    <details className="compaction-file-details">
+      <summary>File context: {parts.join(", ")}</summary>
+      {modifiedFiles.length > 0 && <CompactionFileList title="Modified files" files={modifiedFiles} />}
+      {readFiles.length > 0 && <CompactionFileList title="Read files" files={readFiles} />}
+    </details>
+  );
+}
+
+function CompactionFileList({ title, files }: { title: string; files: string[] }) {
+  return (
+    <div className="compaction-file-section">
+      <div className="compaction-file-title">{title}</div>
+      <ul className="compaction-file-list">
+        {files.map((file) => (
+          <li key={file}>{file}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   const isHiddenDisplay = message.display === false;
   const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -800,7 +1138,7 @@ function CustomMessageView({ message }: { message: CustomMessage }) {
                 })}
               </div>
             )}
-            {text ? <MarkdownBody className="markdown-custom-message">{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no message)</span>}
+            {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>(no message)</span>}
           </div>
         ) : (
           <button
