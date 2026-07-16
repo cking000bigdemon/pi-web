@@ -1096,7 +1096,7 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
       <div
         style={{
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: 0,
           overflow: "hidden",
           background: "var(--bg)",
         }}

@@ -153,7 +153,7 @@ function ScopeTag({ scope }: { scope: PluginScope }) {
       style={{
         fontSize: 10,
         padding: "1px 5px",
-        borderRadius: 3,
+        borderRadius: 0,
         flexShrink: 0,
         background: scope === "project" ? "rgba(99,102,241,0.12)" : "rgba(120,120,120,0.12)",
         color: scope === "project" ? "rgba(99,102,241,0.85)" : "var(--text-dim)",
@@ -169,7 +169,7 @@ function buttonStyle(disabled?: boolean, danger?: boolean): React.CSSProperties 
     padding: "6px 12px",
     background: danger ? "rgba(239,68,68,0.08)" : "none",
     border: "1px solid var(--border)",
-    borderRadius: 6,
+    borderRadius: 0,
     color: danger ? "#ef4444" : "var(--text-muted)",
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 12,
@@ -240,7 +240,7 @@ function SegmentedScope({
       style={{
         display: "inline-flex",
         border: "1px solid var(--border)",
-        borderRadius: 7,
+        borderRadius: 0,
         overflow: "hidden",
         height: 30,
       }}
@@ -321,7 +321,7 @@ function AddPluginPanel({
             height: 36,
             padding: "0 11px",
             border: "1px solid var(--border)",
-            borderRadius: 6,
+            borderRadius: 0,
             background: "var(--bg-panel)",
             color: "var(--text)",
             fontFamily: "var(--font-mono)",
@@ -367,7 +367,7 @@ function AddPluginPanel({
                 textAlign: "left",
                 padding: "6px 9px",
                 border: "1px solid var(--border)",
-                borderRadius: 6,
+                borderRadius: 0,
                 background: "var(--bg-panel)",
                 color: "var(--text-dim)",
                 cursor: "pointer",
@@ -438,7 +438,7 @@ function PackageDetail({
               style={{
                 fontSize: 10,
                 padding: "1px 5px",
-                borderRadius: 3,
+                borderRadius: 0,
                 background: "rgba(120,120,120,0.12)",
                 color: "var(--text-dim)",
               }}
@@ -450,7 +450,7 @@ function PackageDetail({
               style={{
                 fontSize: 10,
                 padding: "1px 5px",
-                borderRadius: 3,
+                borderRadius: 0,
                 background: "rgba(245,158,11,0.12)",
                 color: "#d97706",
               }}
@@ -714,7 +714,7 @@ export function PluginsConfig({
           maxHeight: "calc(100dvh - 16px)",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: 0,
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
@@ -821,7 +821,7 @@ export function PluginsConfig({
                             alignItems: "center",
                             gap: 7,
                             padding: "8px 8px",
-                            borderRadius: 5,
+                            borderRadius: 0,
                             cursor: "pointer",
                             background: isSelected ? "var(--bg-selected)" : "none",
                           }}
@@ -902,7 +902,7 @@ export function PluginsConfig({
                   alignItems: "center",
                   gap: 6,
                   padding: "7px 8px",
-                  borderRadius: 5,
+                  borderRadius: 0,
                   border: "none",
                   width: "100%",
                   cursor: "pointer",

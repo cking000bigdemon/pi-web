@@ -219,7 +219,7 @@ function TreeNode({
               height: 20,
               background: "var(--bg-panel)",
               border: "1px solid var(--border)",
-              borderRadius: 4,
+              borderRadius: 0,
               color: "var(--text-muted)",
               cursor: "pointer",
               fontSize: 11,
