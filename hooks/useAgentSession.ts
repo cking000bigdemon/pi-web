@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useReducer } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
   ExtensionStatusItem,
@@ -151,7 +151,7 @@ export interface UseAgentSessionOptions {
   setToolPreset?: (preset: "none" | "default" | "full") => void;
 }
 
-export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 const PROGRAMMATIC_SCROLL_IGNORE_MS = 700;
 const USER_SCROLL_INTENT_MS = 1200;
@@ -384,7 +384,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const currentModel = currentModelOverride ?? data?.context.model ?? pendingModel ?? null;
   const displayModel = isNew ? (newSessionModel ?? newSessionDefaultModel) : currentModel;
 
-  const sessionStats = (() => {
+  const sessionStats = useMemo(() => {
     if (sessionStatsOverride) return sessionStatsOverride;
     const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
     let cost = 0;
@@ -421,15 +421,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       cost,
       ...(contextUsage ? { contextUsage } : {}),
     } satisfies SessionStatsInfo;
-  })();
+  }, [messages, sessionStatsOverride, contextUsage, data?.filePath, session?.id, session?.name]);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
+    let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
-      const url = includeState
-        ? `/api/sessions/${encodeURIComponent(sid)}?includeState`
-        : `/api/sessions/${encodeURIComponent(sid)}`;
-      const res = await fetch(url);
+      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (res.status === 404) {
         if (showLoading) {
           setData(null);
@@ -440,41 +439,57 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return null;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as SessionData & { agentState?: { running: boolean; state?: AgentStateResponse } };
+      const d = await res.json() as SessionData;
+      if (sessionIdRef.current !== sid) return null;
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride(null);
       setError(null);
-      const liveState = d.agentState?.state;
-      if (liveState) {
-        if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
-        if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-        if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
-        if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
-        if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
-        if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
-      }
-      else if (d.agentState && !d.agentState.running) setQueuedMessages({ steering: [], followUp: [] });
-      // If no live agent state, fall back to thinking level from session file
-      if (!liveState?.thinkingLevel && d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
+      if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
       }
-      return d.agentState ?? null;
+
+      messagesLoaded = true;
+      if (showLoading) setLoading(false);
+      if (!includeState) return null;
+
+      try {
+        const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
+        if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
+        const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
+        if (sessionIdRef.current !== sid) return null;
+
+        const liveState = agentState.state;
+        if (liveState) {
+          if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
+          if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
+          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
+          if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
+          if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
+          if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
+        } else if (!agentState.running) {
+          setQueuedMessages({ steering: [], followUp: [] });
+        }
+        return agentState;
+      } catch (e) {
+        console.error("Failed to load agent state:", e);
+        return null;
+      }
     } catch (e) {
       setError(String(e));
       return null;
     } finally {
-      if (showLoading) setLoading(false);
+      if (showLoading && !messagesLoaded) setLoading(false);
     }
   }, []);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
     try {
-      const url = leafId
-        ? `/api/sessions/${encodeURIComponent(sid)}/context?leafId=${encodeURIComponent(leafId)}`
-        : `/api/sessions/${encodeURIComponent(sid)}/context`;
+      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
+      if (leafId) params.set("leafId", leafId);
+      const url = `/api/sessions/${encodeURIComponent(sid)}/context?${params}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };

@@ -15,7 +15,11 @@ const nextConfig: NextConfig = {
   // config with Turbopack"). An empty turbopack config acknowledges the split:
   // `next dev` uses Turbopack (fast HMR), `next build --webpack` uses the hook.
   turbopack: {},
-  serverExternalPackages: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai"],
+  serverExternalPackages: [
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-tui",
+  ],
   allowedDevOrigins: ['192.168.*.*'],
   async headers() {
     return [
