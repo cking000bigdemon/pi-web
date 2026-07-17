@@ -40,7 +40,7 @@ fork 存在的价值（任何改动/合并都必须保留）：
 - **AppShell**：空状态 = 两个 ghost-π 屏（选了 cwd ② / 冷启动无 cwd ①，`clamp()` π 用 `var(--bg-selected)`）；顶栏统计条 = `statTile` 磁贴；Models/Skills 导航键 = `#008A00` / `#D80073` 实心磁贴。
 - **ChatInput**：steer/followup/Stop = 实心磁贴（`#F0A30A` / `#647687` / `#E51400`）；流式可 steer 时输入框边框 `#F0A30A`；slash 命令面板按可用空间上下翻转（避免新会话居中布局下顶部被顶栏遮）。
 - **SessionSidebar** = 会话磁贴墙（橙 `#FA6800` 选中 cwd、绿/钢蓝刷新键、`var(--accent)` 标题）。
-- **全局**：内联数值 `borderRadius` 一律 `0`（方角），但小圆状态点保留 `borderRadius: "50%"`。
+- **全局**：内联数值 `borderRadius` 一律 `0`（方角），但小圆状态点保留 `borderRadius: "50%"`。清扫圆角时 grep 全量 `borderRadius`（字符串型如 `"0 9px 9px 0"` 会漏过纯数字模式），仅豁免 `"50%"`；SkillsConfig/PluginsConfig 的两个 pill 拨动开关（`borderRadius: 11`）是待定项，暂保留圆角。上游新 UI 的语义色改用 `--tile-*` 调色板（如 `#f59e0b`→`--tile-amber`、`#22c55e`→`--tile-green`），破坏性/次要按钮用实心磁贴（`--tile-red`/`--tile-steel` 白字）。
 
 ---
 
